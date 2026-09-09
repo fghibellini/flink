@@ -126,6 +126,7 @@ import org.apache.flink.util.MdcUtils.MdcCloseable;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedThrowable;
 import org.apache.flink.util.SerializedValue;
+import org.apache.flink.util.TimeUtils;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.function.FunctionUtils;
 import org.apache.flink.util.function.ThrowingConsumer;
@@ -138,6 +139,7 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1397,6 +1399,11 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
             ApplicationID applicationId,
             boolean associateJobWithApplication)
             throws Exception {
+        log.info(
+                "Method runJob() invoked for job {}, executionType: {}, applicationId: {}",
+                jobManagerRunner.getJobID(),
+                executionType,
+                applicationId);
         jobManagerRunner.start();
         jobManagerRunnerRegistry.register(jobManagerRunner);
 
@@ -1421,6 +1428,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                                                             == jobManagerRunner,
                                             "The job entry in runningJobs must be bound to the lifetime of the JobManagerRunner.");
 
+                                    log.info("Job {} result future resolved!", jobId);
                                     if (jobManagerRunnerResult != null) {
                                         return handleJobManagerRunnerResult(
                                                 jobManagerRunnerResult, executionType);
@@ -1481,18 +1489,21 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
         private final boolean globalCleanup;
         private final JobStatus jobStatus;
+        private final Long jobStatusTimestamp; // null for local cleanup
 
         public static CleanupJobState localCleanup(JobStatus jobStatus) {
-            return new CleanupJobState(false, jobStatus);
+            return new CleanupJobState(false, jobStatus, null);
         }
 
-        public static CleanupJobState globalCleanup(JobStatus jobStatus) {
-            return new CleanupJobState(true, jobStatus);
+        public static CleanupJobState globalCleanup(JobStatus jobStatus, long jobStatusTimestamp) {
+            return new CleanupJobState(true, jobStatus, jobStatusTimestamp);
         }
 
-        private CleanupJobState(boolean globalCleanup, JobStatus jobStatus) {
+        private CleanupJobState(
+                boolean globalCleanup, JobStatus jobStatus, Long jobStatusTimestamp) {
             this.globalCleanup = globalCleanup;
             this.jobStatus = jobStatus;
+            this.jobStatusTimestamp = jobStatusTimestamp;
         }
 
         public boolean isGlobalCleanup() {
@@ -1501,6 +1512,13 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
 
         public JobStatus getJobStatus() {
             return jobStatus;
+        }
+
+        public Long getJobStatusTimestamp() {
+            if (!globalCleanup) {
+                throw new IllegalStateException("localCleanup has no timestamp!");
+            }
+            return jobStatusTimestamp;
         }
     }
 
@@ -2184,16 +2202,45 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                 getMainThreadExecutor(jobId));
     }
 
+    private CompletableFuture<Void> waitTerminatedJobIsReadyForRemoval(
+            JobID jobId, CleanupJobState cleanupJobState) {
+        // TODO propagate configuration
+        // TODO No configured value => clean immediately (preserved legacy behavior).
+        Duration configurableCleanupDelay = Duration.ofMinutes(10);
+        final Instant endTime = Instant.ofEpochMilli(cleanupJobState.getJobStatusTimestamp());
+        final Instant cleanupGreenlight = endTime.plus(configurableCleanupDelay);
+        final Duration toWait = Duration.between(Instant.now(), cleanupGreenlight);
+        if (toWait.compareTo(Duration.ZERO) <= 0) {
+            log.info("Terminated job {} is ready for removal. No need to wait.", jobId);
+            return FutureUtils.completedVoidFuture();
+        } else {
+            log.info(
+                    "Waiting {} for terminated job {} to be ready for removal.",
+                    TimeUtils.formatWithHighestUnit(toWait),
+                    jobId);
+            return FutureUtils.delayedVoidFuture(toWait);
+        }
+    }
+
     private CompletableFuture<Void> removeJob(JobID jobId, CleanupJobState cleanupJobState) {
+        log.info("Method removeJob() invoked for job {}", jobId);
         if (cleanupJobState.isGlobalCleanup()) {
             final ApplicationID applicationId = jobIdsToApplicationIds.remove(jobId);
             final CompletableFuture<?> applicationCreateDirtyResultFuture =
                     applicationCreateDirtyResultFutures.get(applicationId);
 
-            // wait for the application dirty result creation before marking the job result as clean
-            return globalResourceCleaner
-                    .cleanupAsync(jobId)
-                    .thenCompose(unused -> applicationCreateDirtyResultFuture)
+            return waitTerminatedJobIsReadyForRemoval(jobId, cleanupJobState)
+                    .thenCompose(
+                            unused -> {
+                                log.info("Job {} is ready for removal! Triggering cleanup!", jobId);
+                                return globalResourceCleaner.cleanupAsync(jobId);
+                            })
+                    // wait for the application dirty result creation before
+                    // marking the job result as clean
+                    .thenCompose(
+                            unused ->
+                                    // TODO clarify why this is needed
+                                    applicationCreateDirtyResultFuture)
                     .thenCompose(
                             unused -> {
                                 applicationCreateDirtyResultFutures.remove(applicationId);
@@ -2312,6 +2359,8 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                     CleanupJobState.localCleanup(terminalJobStatus));
         }
 
+        // TODO do we break the following assumption by delaying the cleanup?
+
         // do not create an archive for suspended jobs, as this would eventually lead to
         // multiple archive attempts which we currently do not support
         CompletableFuture<Acknowledge> archiveFuture =
@@ -2334,6 +2383,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                 "Job %s is in state %s which is not globally terminal.",
                 jobId,
                 terminalJobStatus);
+        final long stateTimestamp = archivedExecutionGraph.getStatusTimestamp(terminalJobStatus);
 
         return jobResultStore
                 .hasCleanJobResultEntryAsync(jobId)
@@ -2353,7 +2403,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                             } else {
                                 jobCreateDirtyResultFutures.get(jobId).complete(null);
                             }
-                            return CleanupJobState.globalCleanup(terminalJobStatus);
+                            return CleanupJobState.globalCleanup(terminalJobStatus, stateTimestamp);
                         },
                         getMainThreadExecutor(jobId));
     }

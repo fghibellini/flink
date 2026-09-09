@@ -485,6 +485,21 @@ public class FutureUtils {
     }
 
     // ------------------------------------------------------------------------
+    //  Sleep
+    // ------------------------------------------------------------------------
+
+    /**
+     * Effectively the Future equivalent of sleep(duration).
+     *
+     * @param delay The delay after which the future should be completed.
+     */
+    public static CompletableFuture<Void> delayedVoidFuture(Duration delay) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        Delayer.delay(() -> future.complete(null), delay.toMillis(), TimeUnit.MILLISECONDS);
+        return future;
+    }
+
+    // ------------------------------------------------------------------------
     //  Future actions
     // ------------------------------------------------------------------------
 
