@@ -2230,11 +2230,11 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
                     applicationCreateDirtyResultFutures.get(applicationId);
 
             return waitTerminatedJobIsReadyForRemoval(jobId, cleanupJobState)
-                    .thenCompose(
+                    .thenComposeAsync(
                             unused -> {
                                 log.info("Job {} is ready for removal! Triggering cleanup!", jobId);
                                 return globalResourceCleaner.cleanupAsync(jobId);
-                            })
+                            }, getMainThreadExecutor(jobId))
                     // wait for the application dirty result creation before
                     // marking the job result as clean
                     .thenCompose(
