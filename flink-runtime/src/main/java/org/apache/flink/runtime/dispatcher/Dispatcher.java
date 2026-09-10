@@ -805,6 +805,7 @@ public abstract class Dispatcher extends FencedRpcEndpoint<DispatcherId>
             jobClientAlivenessCheck = null;
         }
 
+        // TODO this will not play well with our new delay
         final CompletableFuture<Void> allJobsTerminationFuture =
                 terminateRunningJobsAndGetTerminationFuture();
 
