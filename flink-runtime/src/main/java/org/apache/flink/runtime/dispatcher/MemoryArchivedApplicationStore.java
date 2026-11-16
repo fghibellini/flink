@@ -32,6 +32,7 @@ import org.apache.flink.util.concurrent.ScheduledExecutor;
 import org.apache.flink.shaded.guava33.com.google.common.base.Ticker;
 import org.apache.flink.shaded.guava33.com.google.common.cache.Cache;
 import org.apache.flink.shaded.guava33.com.google.common.cache.CacheBuilder;
+import org.apache.flink.shaded.guava33.com.google.common.cache.RemovalListener;
 
 import javax.annotation.Nullable;
 
@@ -43,6 +44,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +68,22 @@ public class MemoryArchivedApplicationStore implements ArchivedApplicationStore 
             int maximumCapacity,
             @Nullable ScheduledExecutor scheduledExecutor,
             @Nullable Ticker ticker) {
+        this(expirationTime, maximumCapacity, scheduledExecutor, ticker, null);
+    }
+
+    /**
+     * Creates the store.
+     *
+     * @param evictionListener notified with the id of every application that is evicted because it
+     *     expired or because the maximum capacity was exceeded. It is not notified about explicit
+     *     removals, e.g. on {@link #close()}.
+     */
+    MemoryArchivedApplicationStore(
+            Duration expirationTime,
+            int maximumCapacity,
+            @Nullable ScheduledExecutor scheduledExecutor,
+            @Nullable Ticker ticker,
+            @Nullable Consumer<ApplicationID> evictionListener) {
         final long expirationMills = expirationTime.toMillis();
         CacheBuilder<Object, Object> cacheBuilder = CacheBuilder.newBuilder();
         if (expirationMills > 0) {
@@ -78,7 +96,20 @@ public class MemoryArchivedApplicationStore implements ArchivedApplicationStore 
             cacheBuilder.ticker(ticker);
         }
 
-        this.archivedApplicationCache = cacheBuilder.build();
+        if (evictionListener != null) {
+            this.archivedApplicationCache =
+                    cacheBuilder
+                            .removalListener(
+                                    (RemovalListener<ApplicationID, ArchivedApplication>)
+                                            notification -> {
+                                                if (notification.wasEvicted()) {
+                                                    evictionListener.accept(notification.getKey());
+                                                }
+                                            })
+                            .build();
+        } else {
+            this.archivedApplicationCache = cacheBuilder.build();
+        }
         if (scheduledExecutor != null) {
             this.cleanupFuture =
                     scheduledExecutor.scheduleWithFixedDelay(
