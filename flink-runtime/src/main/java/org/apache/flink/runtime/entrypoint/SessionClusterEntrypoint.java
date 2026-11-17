@@ -20,17 +20,20 @@ package org.apache.flink.runtime.entrypoint;
 
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ConfigurationUtils;
+import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.FileArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.runtime.util.ArchivedApplicationStoreUtils;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.apache.flink.shaded.guava33.com.google.common.base.Ticker;
 
 import java.io.File;
-import java.io.IOException;
 import java.time.Duration;
 
 /** Base class for session cluster entry points. */
@@ -42,7 +45,10 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
 
     @Override
     protected ArchivedApplicationStore createArchivedApplicationStore(
-            Configuration configuration, ScheduledExecutor scheduledExecutor) throws IOException {
+            Configuration configuration,
+            HighAvailabilityServices haServices,
+            ScheduledExecutor scheduledExecutor)
+            throws Exception {
         final JobManagerOptions.ArchivedApplicationStoreType archivedApplicationStoreType =
                 configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_TYPE);
         final Duration expirationTime =
@@ -74,6 +80,19 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                             maximumCapacity,
                             scheduledExecutor,
                             Ticker.systemTicker());
+                }
+            case HA:
+                {
+                    if (!HighAvailabilityMode.isHighAvailabilityModeActivated(configuration)) {
+                        throw new IllegalConfigurationException(
+                                String.format(
+                                        "The archived application store type %s requires high availability to be enabled via '%s'.",
+                                        archivedApplicationStoreType,
+                                        HighAvailabilityOptions.HA_MODE.key()));
+                    }
+
+                    return haServices.createArchivedApplicationStore(
+                            expirationTime, maximumCapacity, scheduledExecutor);
                 }
             default:
                 {

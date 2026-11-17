@@ -23,6 +23,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.resourcemanager.StandaloneResourceManagerFactory;
 import org.apache.flink.runtime.testutils.TestJvmProcess;
 import org.apache.flink.runtime.util.ClusterUncaughtExceptionHandler;
@@ -101,7 +102,9 @@ class ClusterUncaughtExceptionHandlerITCase {
 
         @Override
         protected ArchivedApplicationStore createArchivedApplicationStore(
-                Configuration configuration, ScheduledExecutor scheduledExecutor)
+                Configuration configuration,
+                HighAvailabilityServices haServices,
+                ScheduledExecutor scheduledExecutor)
                 throws IOException {
             return null;
         }

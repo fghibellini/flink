@@ -40,6 +40,7 @@ import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.metrics.MetricRegistry;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.runtime.minicluster.MiniClusterConfiguration;
+import org.apache.flink.runtime.persistence.TestingStateHandleStore;
 import org.apache.flink.runtime.resourcemanager.StandaloneResourceManagerFactory;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
@@ -311,6 +312,19 @@ public class ArchivedApplicationStoreTestUtils {
                 case Memory:
                     {
                         archivedApplicationStore = new MemoryArchivedApplicationStore();
+                        break;
+                    }
+                case HA:
+                    {
+                        archivedApplicationStore =
+                                new StateHandleArchivedApplicationStore<>(
+                                        TestingStateHandleStore.<ArchivedApplication>newBuilder()
+                                                .build(),
+                                        ZooKeeperArchivedApplicationStoreUtil.INSTANCE,
+                                        Duration.ofHours(1L),
+                                        Integer.MAX_VALUE,
+                                        scheduledExecutor,
+                                        Ticker.systemTicker());
                         break;
                     }
                 default:

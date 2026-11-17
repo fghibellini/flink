@@ -433,13 +433,18 @@ public class JobManagerOptions {
                                                                     + " may need to limit the %s to mitigate FullGC or OOM when there are too many applications",
                                                             code(
                                                                     COMPLETED_APPLICATION_STORE_MAX_CAPACITY
-                                                                            .key())))
+                                                                            .key())),
+                                                    text(
+                                                            "'HA': the HA store keeps the completed applications in memory and"
+                                                                    + " additionally persists them in the high-availability storage."
+                                                                    + " Requires high availability to be enabled"))
                                             .build());
 
     /** Type of archived application store implementation. */
     public enum ArchivedApplicationStoreType {
         File,
-        Memory
+        Memory,
+        HA
     }
 
     /**

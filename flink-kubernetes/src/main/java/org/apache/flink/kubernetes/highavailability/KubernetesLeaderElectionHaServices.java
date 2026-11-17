@@ -27,6 +27,7 @@ import org.apache.flink.kubernetes.kubeclient.KubernetesConfigMapSharedWatcher;
 import org.apache.flink.kubernetes.utils.KubernetesUtils;
 import org.apache.flink.runtime.blob.BlobStoreService;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.highavailability.AbstractHaServices;
 import org.apache.flink.runtime.highavailability.FileSystemApplicationResultStore;
 import org.apache.flink.runtime.highavailability.FileSystemJobResultStore;
@@ -38,10 +39,12 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -163,6 +166,20 @@ public class KubernetesLeaderElectionHaServices extends AbstractHaServices {
     protected ApplicationStore createApplicationStore() throws Exception {
         return KubernetesUtils.createApplicationStore(
                 configuration, kubeClient, getClusterConfigMap(), lockIdentity);
+    }
+
+    @Override
+    public ArchivedApplicationStore createArchivedApplicationStore(
+            Duration expirationTime, int maximumCapacity, ScheduledExecutor scheduledExecutor)
+            throws Exception {
+        return KubernetesUtils.createArchivedApplicationStore(
+                configuration,
+                kubeClient,
+                getClusterConfigMap(),
+                lockIdentity,
+                expirationTime,
+                maximumCapacity,
+                scheduledExecutor);
     }
 
     private String getClusterConfigMap() {

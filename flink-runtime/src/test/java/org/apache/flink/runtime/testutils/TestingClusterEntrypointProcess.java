@@ -26,6 +26,7 @@ import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypoint;
 import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.resourcemanager.StandaloneResourceManagerFactory;
 import org.apache.flink.runtime.util.SignalHandler;
 import org.apache.flink.util.IOUtils;
@@ -118,7 +119,9 @@ public class TestingClusterEntrypointProcess extends TestJvmProcess {
 
         @Override
         protected ArchivedApplicationStore createArchivedApplicationStore(
-                Configuration configuration, ScheduledExecutor scheduledExecutor)
+                Configuration configuration,
+                HighAvailabilityServices haServices,
+                ScheduledExecutor scheduledExecutor)
                 throws IOException {
             return new MemoryArchivedApplicationStore();
         }

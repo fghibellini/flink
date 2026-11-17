@@ -56,6 +56,7 @@ import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
+import org.assertj.core.api.Assertions;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
@@ -166,6 +167,42 @@ public class ClusterEntrypointTest extends TestLogger {
                 is(ApplicationStatus.UNKNOWN));
         assertThat(closeFuture.isDone(), is(true));
         assertThat(cleanupAllDataFuture.isDone(), is(false));
+    }
+
+    @Test
+    public void testArchivedApplicationStoreIsClosedBeforeHaServices() throws Exception {
+        final CompletableFuture<Void> haServicesCloseFuture = new CompletableFuture<>();
+        final HighAvailabilityServices testingHaService =
+                new TestingHighAvailabilityServicesBuilder()
+                        .setCloseFuture(haServicesCloseFuture)
+                        .build();
+        final CompletableFuture<Boolean> haServicesClosedOnArchivedApplicationStoreClose =
+                new CompletableFuture<>();
+        final ArchivedApplicationStore archivedApplicationStore =
+                new MemoryArchivedApplicationStore() {
+                    @Override
+                    public void close() throws IOException {
+                        haServicesClosedOnArchivedApplicationStoreClose.complete(
+                                haServicesCloseFuture.isDone());
+                        super.close();
+                    }
+                };
+        final TestingEntryPoint testingEntryPoint =
+                new TestingEntryPoint.Builder()
+                        .setConfiguration(flinkConfig)
+                        .setHighAvailabilityServices(testingHaService)
+                        .setArchivedApplicationStore(archivedApplicationStore)
+                        .build();
+
+        final CompletableFuture<ApplicationStatus> appStatusFuture =
+                startClusterEntrypoint(testingEntryPoint);
+
+        testingEntryPoint.closeAsync();
+        appStatusFuture.get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
+
+        Assertions.assertThat(haServicesClosedOnArchivedApplicationStoreClose)
+                .isCompletedWithValue(false);
+        Assertions.assertThat(haServicesCloseFuture).isDone();
     }
 
     @Test
@@ -369,16 +406,20 @@ public class ClusterEntrypointTest extends TestLogger {
 
         private final DispatcherRunnerFactory dispatcherRunnerFactory;
 
+        private final ArchivedApplicationStore archivedApplicationStore;
+
         private TestingEntryPoint(
                 Configuration configuration,
                 HighAvailabilityServices haService,
                 ResourceManagerFactory<ResourceID> resourceManagerFactory,
-                DispatcherRunnerFactory dispatcherRunnerFactory) {
+                DispatcherRunnerFactory dispatcherRunnerFactory,
+                ArchivedApplicationStore archivedApplicationStore) {
             super(configuration);
             SignalHandler.register(LOG);
             this.haService = haService;
             this.resourceManagerFactory = resourceManagerFactory;
             this.dispatcherRunnerFactory = dispatcherRunnerFactory;
+            this.archivedApplicationStore = archivedApplicationStore;
         }
 
         @Override
@@ -393,8 +434,10 @@ public class ClusterEntrypointTest extends TestLogger {
 
         @Override
         protected ArchivedApplicationStore createArchivedApplicationStore(
-                Configuration configuration, ScheduledExecutor scheduledExecutor) {
-            return new MemoryArchivedApplicationStore();
+                Configuration configuration,
+                HighAvailabilityServices haServices,
+                ScheduledExecutor scheduledExecutor) {
+            return archivedApplicationStore;
         }
 
         @Override
@@ -420,6 +463,9 @@ public class ClusterEntrypointTest extends TestLogger {
 
             private Configuration configuration = new Configuration();
 
+            private ArchivedApplicationStore archivedApplicationStore =
+                    new MemoryArchivedApplicationStore();
+
             public Builder setHighAvailabilityServices(HighAvailabilityServices haService) {
                 this.haService = haService;
                 return this;
@@ -442,9 +488,19 @@ public class ClusterEntrypointTest extends TestLogger {
                 return this;
             }
 
+            public Builder setArchivedApplicationStore(
+                    ArchivedApplicationStore archivedApplicationStore) {
+                this.archivedApplicationStore = archivedApplicationStore;
+                return this;
+            }
+
             public TestingEntryPoint build() {
                 return new TestingEntryPoint(
-                        configuration, haService, resourceManagerFactory, dispatcherRunnerFactory);
+                        configuration,
+                        haService,
+                        resourceManagerFactory,
+                        dispatcherRunnerFactory,
+                        archivedApplicationStore);
             }
         }
     }

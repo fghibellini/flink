@@ -146,6 +146,14 @@ public class HighAvailabilityOptions {
                     .defaultValue("/applications")
                     .withDescription("ZooKeeper root path (ZNode) for applications");
 
+    /** ZooKeeper root path (ZNode) for archived applications. */
+    @Documentation.Section(Documentation.Sections.EXPERT_ZOOKEEPER_HIGH_AVAILABILITY)
+    public static final ConfigOption<String> HA_ZOOKEEPER_ARCHIVED_APPLICATIONS_PATH =
+            key("high-availability.zookeeper.path.archived-applications")
+                    .stringType()
+                    .defaultValue("/archived-applications")
+                    .withDescription("ZooKeeper root path (ZNode) for archived applications");
+
     // ------------------------------------------------------------------------
     //  ZooKeeper Client Settings
     // ------------------------------------------------------------------------

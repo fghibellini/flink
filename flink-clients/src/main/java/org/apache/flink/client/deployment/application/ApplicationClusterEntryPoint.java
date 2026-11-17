@@ -33,6 +33,7 @@ import org.apache.flink.runtime.dispatcher.runner.DefaultDispatcherRunnerFactory
 import org.apache.flink.runtime.entrypoint.ClusterEntrypoint;
 import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerFactory;
 import org.apache.flink.runtime.rest.ApplicationRestEndpointFactory;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
@@ -79,7 +80,9 @@ public class ApplicationClusterEntryPoint extends ClusterEntrypoint {
 
     @Override
     protected ArchivedApplicationStore createArchivedApplicationStore(
-            final Configuration configuration, final ScheduledExecutor scheduledExecutor) {
+            final Configuration configuration,
+            final HighAvailabilityServices haServices,
+            final ScheduledExecutor scheduledExecutor) {
         return new MemoryArchivedApplicationStore();
     }
 

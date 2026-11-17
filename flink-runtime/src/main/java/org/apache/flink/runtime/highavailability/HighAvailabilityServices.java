@@ -21,6 +21,7 @@ package org.apache.flink.runtime.highavailability;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.blob.BlobStore;
 import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.cleanup.GloballyCleanableResource;
 import org.apache.flink.runtime.jobmanager.ApplicationStore;
 import org.apache.flink.runtime.jobmanager.ExecutionPlanStore;
@@ -28,8 +29,10 @@ import org.apache.flink.runtime.leaderelection.LeaderElection;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.concurrent.FutureUtils;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -192,6 +195,26 @@ public interface HighAvailabilityServices
      * @throws IOException if the blob store could not be created
      */
     BlobStore createBlobStore() throws IOException;
+
+    /**
+     * Creates an {@link ArchivedApplicationStore} which keeps the archived applications in memory
+     * and additionally persists them in the highly-available storage.
+     *
+     * @param expirationTime duration after which archived applications are evicted from the store
+     * @param maximumCapacity maximum number of archived applications kept in the store
+     * @param scheduledExecutor executor which periodically evicts the expired applications
+     * @return archived application store which persists the applications in a highly-available
+     *     fashion
+     * @throws Exception if the archived application store could not be created
+     */
+    default ArchivedApplicationStore createArchivedApplicationStore(
+            Duration expirationTime, int maximumCapacity, ScheduledExecutor scheduledExecutor)
+            throws Exception {
+        throw new UnsupportedOperationException(
+                String.format(
+                        "%s does not support persisting archived applications.",
+                        getClass().getSimpleName()));
+    }
 
     /** Gets the {@link LeaderElection} for the cluster's rest endpoint. */
     default LeaderElection getClusterRestEndpointLeaderElection() {

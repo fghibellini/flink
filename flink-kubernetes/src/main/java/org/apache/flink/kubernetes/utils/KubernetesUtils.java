@@ -26,6 +26,7 @@ import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.core.execution.RecoveryClaimMode;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
 import org.apache.flink.kubernetes.highavailability.KubernetesApplicationStoreUtil;
+import org.apache.flink.kubernetes.highavailability.KubernetesArchivedApplicationStoreUtil;
 import org.apache.flink.kubernetes.highavailability.KubernetesCheckpointStoreUtil;
 import org.apache.flink.kubernetes.highavailability.KubernetesExecutionPlanStoreUtil;
 import org.apache.flink.kubernetes.highavailability.KubernetesStateHandleStore;
@@ -33,10 +34,13 @@ import org.apache.flink.kubernetes.kubeclient.FlinkKubeClient;
 import org.apache.flink.kubernetes.kubeclient.FlinkPod;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesConfigMap;
 import org.apache.flink.kubernetes.kubeclient.resources.KubernetesPod;
+import org.apache.flink.runtime.application.ArchivedApplication;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.DefaultCompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.DefaultCompletedCheckpointStoreUtils;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.StateHandleArchivedApplicationStore;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.jobmanager.ApplicationStore;
 import org.apache.flink.runtime.jobmanager.ApplicationStoreEntry;
@@ -54,8 +58,10 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.StringUtils;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 import org.apache.flink.util.function.FunctionUtils;
 
+import org.apache.flink.shaded.guava33.com.google.common.base.Ticker;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
@@ -74,6 +80,7 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -88,6 +95,8 @@ import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.kubernetes.utils.Constants.APPLICATION_STORE_KEY_PREFIX;
+import static org.apache.flink.kubernetes.utils.Constants.ARCHIVED_APPLICATION_FILE_PREFIX;
+import static org.apache.flink.kubernetes.utils.Constants.ARCHIVED_APPLICATION_STORE_KEY_PREFIX;
 import static org.apache.flink.kubernetes.utils.Constants.CHECKPOINT_ID_KEY_PREFIX;
 import static org.apache.flink.kubernetes.utils.Constants.COMPLETED_CHECKPOINT_FILE_SUFFIX;
 import static org.apache.flink.kubernetes.utils.Constants.DNS_POLICY_DEFAULT;
@@ -294,6 +303,53 @@ public class KubernetesUtils {
                 stateStorage,
                 k -> k.startsWith(APPLICATION_STORE_KEY_PREFIX),
                 lockIdentity);
+    }
+
+    /**
+     * Create a {@link StateHandleArchivedApplicationStore} with {@link KubernetesStateHandleStore}
+     * and {@link KubernetesArchivedApplicationStoreUtil}.
+     *
+     * @param configuration configuration to build a RetrievableStateStorageHelper
+     * @param flinkKubeClient flink kubernetes client
+     * @param configMapName ConfigMap name
+     * @param lockIdentity lock identity to check the leadership
+     * @param expirationTime duration after which archived applications are evicted from the store
+     * @param maximumCapacity maximum number of archived applications kept in the store
+     * @param scheduledExecutor executor which periodically evicts the expired applications
+     * @return a {@link StateHandleArchivedApplicationStore}
+     * @throws Exception when create the storage helper
+     */
+    public static ArchivedApplicationStore createArchivedApplicationStore(
+            Configuration configuration,
+            FlinkKubeClient flinkKubeClient,
+            String configMapName,
+            String lockIdentity,
+            Duration expirationTime,
+            int maximumCapacity,
+            ScheduledExecutor scheduledExecutor)
+            throws Exception {
+
+        final RetrievableStateStorageHelper<ArchivedApplication> stateStorage =
+                new FileSystemStateStorageHelper<>(
+                        HighAvailabilityServicesUtils.getClusterHighAvailableStoragePath(
+                                configuration),
+                        ARCHIVED_APPLICATION_FILE_PREFIX);
+
+        final KubernetesStateHandleStore<ArchivedApplication> stateHandleStore =
+                new KubernetesStateHandleStore<>(
+                        flinkKubeClient,
+                        configMapName,
+                        stateStorage,
+                        k -> k.startsWith(ARCHIVED_APPLICATION_STORE_KEY_PREFIX),
+                        lockIdentity);
+
+        return new StateHandleArchivedApplicationStore<>(
+                stateHandleStore,
+                KubernetesArchivedApplicationStoreUtil.INSTANCE,
+                expirationTime,
+                maximumCapacity,
+                scheduledExecutor,
+                Ticker.systemTicker());
     }
 
     /**

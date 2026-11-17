@@ -423,7 +423,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
             archivedApplicationStore =
                     createArchivedApplicationStore(
-                            configuration, commonRpcService.getScheduledExecutor());
+                            configuration, haServices, commonRpcService.getScheduledExecutor());
         }
     }
 
@@ -506,18 +506,19 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                 }
             }
 
-            if (haServices != null) {
+            // the archived application store might be backed by the HA services
+            if (archivedApplicationStore != null) {
                 try {
-                    haServices.closeWithOptionalClean(cleanupHaData);
+                    archivedApplicationStore.close();
+                    archivedApplicationStore = null;
                 } catch (Throwable t) {
                     exception = ExceptionUtils.firstOrSuppressed(t, exception);
                 }
             }
 
-            if (archivedApplicationStore != null) {
+            if (haServices != null) {
                 try {
-                    archivedApplicationStore.close();
-                    archivedApplicationStore = null;
+                    haServices.closeWithOptionalClean(cleanupHaData);
                 } catch (Throwable t) {
                     exception = ExceptionUtils.firstOrSuppressed(t, exception);
                 }
@@ -696,7 +697,10 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                     throws IOException;
 
     protected abstract ArchivedApplicationStore createArchivedApplicationStore(
-            Configuration configuration, ScheduledExecutor scheduledExecutor) throws IOException;
+            Configuration configuration,
+            HighAvailabilityServices haServices,
+            ScheduledExecutor scheduledExecutor)
+            throws Exception;
 
     public static EntrypointClusterConfiguration parseArguments(String[] args)
             throws FlinkParseException {

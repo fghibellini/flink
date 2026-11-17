@@ -27,6 +27,7 @@ import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.core.execution.RecoveryClaimMode;
+import org.apache.flink.runtime.application.ArchivedApplication;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
 import org.apache.flink.runtime.checkpoint.DefaultCompletedCheckpointStore;
@@ -34,6 +35,9 @@ import org.apache.flink.runtime.checkpoint.DefaultCompletedCheckpointStoreUtils;
 import org.apache.flink.runtime.checkpoint.DefaultLastStateConnectionStateListener;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointStoreUtil;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.StateHandleArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ZooKeeperArchivedApplicationStoreUtil;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
 import org.apache.flink.runtime.jobmanager.ApplicationStore;
@@ -57,6 +61,7 @@ import org.apache.flink.runtime.state.SharedStateRegistryFactory;
 import org.apache.flink.runtime.zookeeper.ZooKeeperStateHandleStore;
 import org.apache.flink.streaming.api.graph.ExecutionPlan;
 import org.apache.flink.util.concurrent.Executors;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
 import org.apache.flink.util.function.RunnableWithException;
 
 import org.apache.flink.shaded.curator5.org.apache.curator.framework.AuthInfo;
@@ -71,6 +76,7 @@ import org.apache.flink.shaded.curator5.org.apache.curator.framework.recipes.cac
 import org.apache.flink.shaded.curator5.org.apache.curator.framework.recipes.cache.TreeCacheSelector;
 import org.apache.flink.shaded.curator5.org.apache.curator.framework.state.SessionConnectionStateErrorPolicy;
 import org.apache.flink.shaded.curator5.org.apache.curator.retry.BoundedExponentialBackoffRetry;
+import org.apache.flink.shaded.guava33.com.google.common.base.Ticker;
 import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.CreateMode;
 import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
 import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.ZooDefs;
@@ -87,6 +93,7 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -109,6 +116,9 @@ public class ZooKeeperUtils {
 
     /** The prefix of the submitted application file. */
     public static final String HA_STORAGE_SUBMITTED_APPLICATION_PREFIX = "submittedApplication";
+
+    /** The prefix of the archived application file. */
+    public static final String HA_STORAGE_ARCHIVED_APPLICATION_PREFIX = "archivedApplication";
 
     /** The prefix of the completed checkpoint file. */
     public static final String HA_STORAGE_COMPLETED_CHECKPOINT = "completedCheckpoint";
@@ -605,6 +615,47 @@ public class ZooKeeperUtils {
 
         return new DefaultApplicationStore<>(
                 zooKeeperApplicationStateHandleStore, ZooKeeperApplicationStoreUtil.INSTANCE);
+    }
+
+    /**
+     * Creates a {@link StateHandleArchivedApplicationStore} instance with {@link
+     * ZooKeeperStateHandleStore}, and {@link ZooKeeperArchivedApplicationStoreUtil}.
+     *
+     * @param client The {@link CuratorFramework} ZooKeeper client to use
+     * @param configuration {@link Configuration} object
+     * @param expirationTime duration after which archived applications are evicted from the store
+     * @param maximumCapacity maximum number of archived applications kept in the store
+     * @param scheduledExecutor executor which periodically evicts the expired applications
+     * @return {@link StateHandleArchivedApplicationStore} instance
+     * @throws Exception if the archived application store cannot be created
+     */
+    public static ArchivedApplicationStore createArchivedApplicationStore(
+            CuratorFramework client,
+            Configuration configuration,
+            Duration expirationTime,
+            int maximumCapacity,
+            ScheduledExecutor scheduledExecutor)
+            throws Exception {
+
+        checkNotNull(configuration, "Configuration");
+
+        final RetrievableStateStorageHelper<ArchivedApplication> stateStorage =
+                createFileSystemStateStorage(configuration, HA_STORAGE_ARCHIVED_APPLICATION_PREFIX);
+
+        final ZooKeeperStateHandleStore<ArchivedApplication> stateHandleStore =
+                createZooKeeperStateHandleStore(
+                        client,
+                        configuration.get(
+                                HighAvailabilityOptions.HA_ZOOKEEPER_ARCHIVED_APPLICATIONS_PATH),
+                        stateStorage);
+
+        return new StateHandleArchivedApplicationStore<>(
+                stateHandleStore,
+                ZooKeeperArchivedApplicationStoreUtil.INSTANCE,
+                expirationTime,
+                maximumCapacity,
+                scheduledExecutor,
+                Ticker.systemTicker());
     }
 
     /**
