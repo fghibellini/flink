@@ -51,14 +51,14 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
             throws Exception {
         final JobManagerOptions.ArchivedApplicationStoreType archivedApplicationStoreType =
                 configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_TYPE);
-        final Duration expirationTime =
-                ArchivedApplicationStoreUtils.getExpirationTime(configuration);
-        final int maximumCapacity =
-                configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
-
         switch (archivedApplicationStoreType) {
             case File:
                 {
+                    final Duration expirationTime =
+                            ArchivedApplicationStoreUtils.getExpirationTime(configuration);
+                    final int maximumCapacity =
+                            configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
+
                     final File tmpDir =
                             new File(ConfigurationUtils.parseTempDirectories(configuration)[0]);
                     final long maximumCacheSizeBytes =
@@ -75,6 +75,11 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                 }
             case Memory:
                 {
+                    final Duration expirationTime =
+                            ArchivedApplicationStoreUtils.getExpirationTime(configuration);
+                    final int maximumCapacity =
+                            configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
+
                     return new MemoryArchivedApplicationStore(
                             expirationTime,
                             maximumCapacity,
