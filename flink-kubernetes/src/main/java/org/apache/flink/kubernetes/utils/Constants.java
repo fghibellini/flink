@@ -112,6 +112,7 @@ public class Constants {
     public static final String SUBMITTED_EXECUTION_PLAN_FILE_PREFIX = "submittedExecutionPlan";
     public static final String APPLICATION_STORE_KEY_PREFIX = "application-";
     public static final String SUBMITTED_APPLICATION_FILE_PREFIX = "submittedApplication";
+    public static final String ARCHIVED_APPLICATION_STORE_KEY_PREFIX = "archivedApplication-";
     public static final String CHECKPOINT_COUNTER_KEY = "counter";
     public static final String CHECKPOINT_ID_KEY_PREFIX = "checkpointID-";
     public static final String COMPLETED_CHECKPOINT_FILE_SUFFIX = "completedCheckpoint";

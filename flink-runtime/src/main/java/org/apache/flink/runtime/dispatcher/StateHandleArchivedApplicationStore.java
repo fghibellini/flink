@@ -21,7 +21,6 @@ package org.apache.flink.runtime.dispatcher;
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.application.ArchivedApplication;
-import org.apache.flink.runtime.jobmanager.ApplicationStoreUtil;
 import org.apache.flink.runtime.messages.webmonitor.ApplicationDetails;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.messages.webmonitor.JobsOverview;
@@ -58,8 +57,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * capacity was exceeded, are removed from the {@link StateHandleStore} as well. Closing the store
  * only releases the locks on the persisted entries but keeps them.
  *
- * <p>The {@link StateHandleStore} must be dedicated to archived applications because the entries
- * are named after the application id by the given {@link ApplicationStoreUtil}.
+ * <p>The names of the entries in the {@link StateHandleStore} are derived from the application ids
+ * by the given {@link ArchivedApplicationStoreUtil}.
  *
  * @param <R> type of the resource version of the {@link StateHandleStore}
  */
@@ -77,19 +76,19 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
 
     private final StateHandleStore<ArchivedApplication, R> stateHandleStore;
 
-    private final ApplicationStoreUtil applicationStoreUtil;
+    private final ArchivedApplicationStoreUtil archivedApplicationStoreUtil;
 
     private final MemoryArchivedApplicationStore memoryStore;
 
     public StateHandleArchivedApplicationStore(
             StateHandleStore<ArchivedApplication, R> stateHandleStore,
-            ApplicationStoreUtil applicationStoreUtil,
+            ArchivedApplicationStoreUtil archivedApplicationStoreUtil,
             Duration expirationTime,
             int maximumCapacity,
             @Nullable ScheduledExecutor scheduledExecutor,
             @Nullable Ticker ticker) {
         this.stateHandleStore = checkNotNull(stateHandleStore);
-        this.applicationStoreUtil = checkNotNull(applicationStoreUtil);
+        this.archivedApplicationStoreUtil = checkNotNull(archivedApplicationStoreUtil);
 
         LOG.info(
                 "Initializing {}: State handle store {}, expiration time {}, maximum capacity {}.",
@@ -123,7 +122,7 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
         memoryStore.put(archivedApplication);
 
         final ApplicationID applicationId = archivedApplication.getApplicationId();
-        final String name = applicationStoreUtil.applicationIdToName(applicationId);
+        final String name = archivedApplicationStoreUtil.applicationIdToName(applicationId);
 
         synchronized (lock) {
             try {
@@ -185,7 +184,7 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
     }
 
     private void removePersistedApplication(ApplicationID applicationId) {
-        final String name = applicationStoreUtil.applicationIdToName(applicationId);
+        final String name = archivedApplicationStoreUtil.applicationIdToName(applicationId);
 
         synchronized (lock) {
             try {

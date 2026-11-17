@@ -20,7 +20,6 @@ package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.runtime.application.ArchivedApplication;
-import org.apache.flink.runtime.jobmanager.ZooKeeperApplicationStoreUtil;
 import org.apache.flink.runtime.persistence.IntegerResourceVersion;
 import org.apache.flink.runtime.persistence.StateHandleStore;
 import org.apache.flink.runtime.persistence.TestingStateHandleStore;
@@ -165,7 +164,7 @@ class StateHandleArchivedApplicationStoreTest {
             int maximumCapacity) {
         return new StateHandleArchivedApplicationStore<>(
                 stateHandleStore,
-                ZooKeeperApplicationStoreUtil.INSTANCE,
+                ZooKeeperArchivedApplicationStoreUtil.INSTANCE,
                 Duration.ofHours(1),
                 maximumCapacity,
                 null,
@@ -174,6 +173,6 @@ class StateHandleArchivedApplicationStoreTest {
 
     private static String nameOf(ArchivedApplication archivedApplication) {
         final ApplicationID applicationId = archivedApplication.getApplicationId();
-        return ZooKeeperApplicationStoreUtil.INSTANCE.applicationIdToName(applicationId);
+        return ZooKeeperArchivedApplicationStoreUtil.INSTANCE.applicationIdToName(applicationId);
     }
 }
