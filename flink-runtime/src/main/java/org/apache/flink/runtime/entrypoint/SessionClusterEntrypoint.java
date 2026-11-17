@@ -91,8 +91,7 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                                         HighAvailabilityOptions.HA_MODE.key()));
                     }
 
-                    return haServices.createArchivedApplicationStore(
-                            expirationTime, maximumCapacity, scheduledExecutor);
+                    return haServices.createArchivedApplicationStore();
                 }
             default:
                 {

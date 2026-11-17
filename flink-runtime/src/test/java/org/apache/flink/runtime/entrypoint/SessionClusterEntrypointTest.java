@@ -28,14 +28,11 @@ import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
 import org.apache.flink.util.concurrent.ManuallyTriggeredScheduledExecutor;
-import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -69,29 +66,13 @@ class SessionClusterEntrypointTest {
     void testHaArchivedApplicationStoreIsCreatedByHaServices() throws Exception {
         final Configuration configuration = createHaArchivedApplicationStoreConfiguration();
         configuration.set(HighAvailabilityOptions.HA_MODE, "zookeeper");
-        configuration.set(
-                JobManagerOptions.COMPLETED_APPLICATION_STORE_EXPIRATION_TIME,
-                Duration.ofMinutes(42L));
-        configuration.set(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY, 1337);
 
         final ArchivedApplicationStore haArchivedApplicationStore =
                 new MemoryArchivedApplicationStore();
-        final ManuallyTriggeredScheduledExecutor scheduledExecutor =
-                new ManuallyTriggeredScheduledExecutor();
-        final CompletableFuture<Duration> expirationTimeFuture = new CompletableFuture<>();
-        final CompletableFuture<Integer> maximumCapacityFuture = new CompletableFuture<>();
-        final CompletableFuture<ScheduledExecutor> scheduledExecutorFuture =
-                new CompletableFuture<>();
         final TestingHighAvailabilityServices haServices =
                 new TestingHighAvailabilityServices() {
                     @Override
-                    public ArchivedApplicationStore createArchivedApplicationStore(
-                            Duration expirationTime,
-                            int maximumCapacity,
-                            ScheduledExecutor scheduledExecutor) {
-                        expirationTimeFuture.complete(expirationTime);
-                        maximumCapacityFuture.complete(maximumCapacity);
-                        scheduledExecutorFuture.complete(scheduledExecutor);
+                    public ArchivedApplicationStore createArchivedApplicationStore() {
                         return haArchivedApplicationStore;
                     }
                 };
@@ -100,11 +81,8 @@ class SessionClusterEntrypointTest {
                 new TestingSessionClusterEntrypoint(configuration);
         try (final ArchivedApplicationStore archivedApplicationStore =
                 entrypoint.createArchivedApplicationStore(
-                        configuration, haServices, scheduledExecutor)) {
+                        configuration, haServices, new ManuallyTriggeredScheduledExecutor())) {
             assertThat(archivedApplicationStore).isSameAs(haArchivedApplicationStore);
-            assertThat(expirationTimeFuture).isCompletedWithValue(Duration.ofMinutes(42L));
-            assertThat(maximumCapacityFuture).isCompletedWithValue(1337);
-            assertThat(scheduledExecutorFuture).isCompletedWithValue(scheduledExecutor);
         } finally {
             entrypoint.closeAsync().join();
         }

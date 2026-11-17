@@ -22,6 +22,7 @@ import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.api.common.ApplicationState;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.testutils.EachCallbackWrapper;
 import org.apache.flink.runtime.application.ArchivedApplication;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
@@ -37,7 +38,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.Collections;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,7 +54,7 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
     @TempDir private Path tempDir;
 
     @Test
-    void testPutPersistsArchivedApplicationUnderConfiguredPath() throws Exception {
+    void testArchivedApplicationStoreIsCreatedFromConfiguration() throws Exception {
         final String archivedApplicationsPath = "/custom-archived-applications";
         final Configuration configuration = new Configuration();
         configuration.set(
@@ -63,17 +63,14 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
         configuration.set(
                 HighAvailabilityOptions.HA_ZOOKEEPER_ARCHIVED_APPLICATIONS_PATH,
                 archivedApplicationsPath);
+        configuration.set(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY, 1);
 
-        final ArchivedApplication archivedApplication =
-                new ArchivedApplication(
-                        ApplicationID.generate(),
-                        "test-application",
-                        ApplicationState.FINISHED,
-                        new long[ApplicationState.values().length],
-                        Collections.emptyMap(),
-                        Collections.emptyList());
-        final String applicationZNode =
-                archivedApplicationsPath + "/" + archivedApplication.getApplicationId();
+        final ArchivedApplication firstApplication = createArchivedApplication();
+        final ArchivedApplication secondApplication = createArchivedApplication();
+        final String firstZNode =
+                archivedApplicationsPath + "/" + firstApplication.getApplicationId();
+        final String secondZNode =
+                archivedApplicationsPath + "/" + secondApplication.getApplicationId();
 
         final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper =
                 ZooKeeperUtils.startCuratorFramework(configuration, NoOpFatalErrorHandler.INSTANCE);
@@ -82,22 +79,30 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
 
             try (final ArchivedApplicationStore archivedApplicationStore =
                     ZooKeeperUtils.createArchivedApplicationStore(
-                            client,
-                            configuration,
-                            Duration.ofHours(1L),
-                            Integer.MAX_VALUE,
-                            new ManuallyTriggeredScheduledExecutor())) {
-                archivedApplicationStore.put(archivedApplication);
+                            client, configuration, new ManuallyTriggeredScheduledExecutor())) {
+                archivedApplicationStore.put(firstApplication);
+                assertThat(client.checkExists().forPath(firstZNode)).isNotNull();
 
-                assertThat(client.checkExists().forPath(applicationZNode)).isNotNull();
-                assertThat(archivedApplicationStore.get(archivedApplication.getApplicationId()))
-                        .isPresent();
+                // exceeds the configured maximum capacity, which evicts the first application
+                archivedApplicationStore.put(secondApplication);
+                assertThat(client.checkExists().forPath(firstZNode)).isNull();
+                assertThat(client.checkExists().forPath(secondZNode)).isNotNull();
             }
 
             // closing the store only releases the locks but keeps the persisted entries
-            assertThat(client.checkExists().forPath(applicationZNode)).isNotNull();
+            assertThat(client.checkExists().forPath(secondZNode)).isNotNull();
         } finally {
             curatorFrameworkWrapper.close();
         }
+    }
+
+    private static ArchivedApplication createArchivedApplication() {
+        return new ArchivedApplication(
+                ApplicationID.generate(),
+                "test-application",
+                ApplicationState.FINISHED,
+                new long[ApplicationState.values().length],
+                Collections.emptyMap(),
+                Collections.emptyList());
     }
 }

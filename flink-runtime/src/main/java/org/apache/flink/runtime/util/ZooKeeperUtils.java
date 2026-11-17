@@ -25,6 +25,7 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.core.execution.RecoveryClaimMode;
 import org.apache.flink.runtime.application.ArchivedApplication;
@@ -93,7 +94,6 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -623,8 +623,6 @@ public class ZooKeeperUtils {
      *
      * @param client The {@link CuratorFramework} ZooKeeper client to use
      * @param configuration {@link Configuration} object
-     * @param expirationTime duration after which archived applications are evicted from the store
-     * @param maximumCapacity maximum number of archived applications kept in the store
      * @param scheduledExecutor executor which periodically evicts the expired applications
      * @return {@link StateHandleArchivedApplicationStore} instance
      * @throws Exception if the archived application store cannot be created
@@ -632,8 +630,6 @@ public class ZooKeeperUtils {
     public static ArchivedApplicationStore createArchivedApplicationStore(
             CuratorFramework client,
             Configuration configuration,
-            Duration expirationTime,
-            int maximumCapacity,
             ScheduledExecutor scheduledExecutor)
             throws Exception {
 
@@ -652,8 +648,8 @@ public class ZooKeeperUtils {
         return new StateHandleArchivedApplicationStore<>(
                 stateHandleStore,
                 ZooKeeperArchivedApplicationStoreUtil.INSTANCE,
-                expirationTime,
-                maximumCapacity,
+                ArchivedApplicationStoreUtils.getExpirationTime(configuration),
+                configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY),
                 scheduledExecutor,
                 Ticker.systemTicker());
     }

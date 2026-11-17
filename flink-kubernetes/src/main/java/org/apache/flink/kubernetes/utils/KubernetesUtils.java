@@ -22,6 +22,7 @@ import org.apache.flink.api.common.resources.ExternalResource;
 import org.apache.flink.client.program.PackagedProgramUtils;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.core.execution.RecoveryClaimMode;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
@@ -52,6 +53,7 @@ import org.apache.flink.runtime.leaderelection.LeaderInformation;
 import org.apache.flink.runtime.persistence.RetrievableStateStorageHelper;
 import org.apache.flink.runtime.persistence.filesystem.FileSystemStateStorageHelper;
 import org.apache.flink.runtime.state.SharedStateRegistryFactory;
+import org.apache.flink.runtime.util.ArchivedApplicationStoreUtils;
 import org.apache.flink.streaming.api.graph.ExecutionPlan;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -80,7 +82,6 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.net.URI;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -313,8 +314,6 @@ public class KubernetesUtils {
      * @param flinkKubeClient flink kubernetes client
      * @param configMapName ConfigMap name
      * @param lockIdentity lock identity to check the leadership
-     * @param expirationTime duration after which archived applications are evicted from the store
-     * @param maximumCapacity maximum number of archived applications kept in the store
      * @param scheduledExecutor executor which periodically evicts the expired applications
      * @return a {@link StateHandleArchivedApplicationStore}
      * @throws Exception when create the storage helper
@@ -324,8 +323,6 @@ public class KubernetesUtils {
             FlinkKubeClient flinkKubeClient,
             String configMapName,
             String lockIdentity,
-            Duration expirationTime,
-            int maximumCapacity,
             ScheduledExecutor scheduledExecutor)
             throws Exception {
 
@@ -346,8 +343,8 @@ public class KubernetesUtils {
         return new StateHandleArchivedApplicationStore<>(
                 stateHandleStore,
                 KubernetesArchivedApplicationStoreUtil.INSTANCE,
-                expirationTime,
-                maximumCapacity,
+                ArchivedApplicationStoreUtils.getExpirationTime(configuration),
+                configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY),
                 scheduledExecutor,
                 Ticker.systemTicker());
     }

@@ -41,6 +41,8 @@ import java.util.ArrayDeque;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -75,6 +77,27 @@ class AbstractHaServicesTest {
                         CloseOperations.HA_CLEANUP,
                         CloseOperations.HA_CLOSE,
                         CloseOperations.BLOB_CLEANUP);
+    }
+
+    @Test
+    void testCloseShutsDownScheduledExecutor() throws Exception {
+        final Queue<CloseOperations> closeOperations = new ArrayDeque<>(3);
+        final TestingHaServices haServices =
+                new TestingHaServices(
+                        new Configuration(),
+                        Executors.directExecutor(),
+                        new TestingBlobStoreService(closeOperations),
+                        closeOperations,
+                        () -> {},
+                        ignored -> {});
+
+        haServices.close();
+
+        assertThatThrownBy(
+                        () ->
+                                haServices.scheduledExecutor.schedule(
+                                        () -> {}, 1L, TimeUnit.MILLISECONDS))
+                .isInstanceOf(RejectedExecutionException.class);
     }
 
     /**

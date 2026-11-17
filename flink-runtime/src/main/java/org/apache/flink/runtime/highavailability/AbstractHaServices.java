@@ -30,6 +30,10 @@ import org.apache.flink.runtime.leaderelection.LeaderElection;
 import org.apache.flink.runtime.leaderelection.LeaderElectionDriverFactory;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.ExecutorUtils;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
+import org.apache.flink.util.concurrent.ScheduledExecutor;
+import org.apache.flink.util.concurrent.ScheduledExecutorServiceAdapter;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +41,9 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -60,6 +67,14 @@ public abstract class AbstractHaServices implements HighAvailabilityServices {
     /** The executor to run external IO operations on. */
     protected final Executor ioExecutor;
 
+    /**
+     * The executor to run the periodic tasks of the services created by these HA services on, e.g.
+     * the eviction of expired archived applications.
+     */
+    protected final ScheduledExecutor scheduledExecutor;
+
+    private final ScheduledExecutorService scheduledExecutorService;
+
     /** The runtime configuration. */
     protected final Configuration configuration;
 
@@ -82,6 +97,10 @@ public abstract class AbstractHaServices implements HighAvailabilityServices {
 
         this.configuration = checkNotNull(config);
         this.ioExecutor = checkNotNull(ioExecutor);
+        this.scheduledExecutorService =
+                Executors.newSingleThreadScheduledExecutor(
+                        new ExecutorThreadFactory("ha-services-scheduled-executor"));
+        this.scheduledExecutor = new ScheduledExecutorServiceAdapter(scheduledExecutorService);
         this.blobStoreService = checkNotNull(blobStoreService);
         this.jobResultStore = checkNotNull(jobResultStore);
         this.applicationResultStore = checkNotNull(applicationResultStore);
@@ -168,6 +187,9 @@ public abstract class AbstractHaServices implements HighAvailabilityServices {
     @Override
     public void close() throws Exception {
         Throwable exception = null;
+
+        // shut down first, so that no periodic task accesses the services closed below
+        ExecutorUtils.gracefulShutdown(5, TimeUnit.SECONDS, scheduledExecutorService);
 
         try {
             blobStoreService.close();

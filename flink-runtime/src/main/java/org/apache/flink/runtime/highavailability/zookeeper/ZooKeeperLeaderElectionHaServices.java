@@ -32,13 +32,11 @@ import org.apache.flink.runtime.jobmanager.ExecutionPlanStore;
 import org.apache.flink.runtime.leaderelection.ZooKeeperLeaderElectionDriverFactory;
 import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
-import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.apache.flink.shaded.curator5.org.apache.curator.framework.CuratorFramework;
 import org.apache.flink.shaded.curator5.org.apache.curator.utils.ZKPaths;
 import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
 
-import java.time.Duration;
 import java.util.concurrent.Executor;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -109,15 +107,9 @@ public class ZooKeeperLeaderElectionHaServices extends AbstractHaServices {
     }
 
     @Override
-    public ArchivedApplicationStore createArchivedApplicationStore(
-            Duration expirationTime, int maximumCapacity, ScheduledExecutor scheduledExecutor)
-            throws Exception {
+    public ArchivedApplicationStore createArchivedApplicationStore() throws Exception {
         return ZooKeeperUtils.createArchivedApplicationStore(
-                curatorFrameworkWrapper.asCuratorFramework(),
-                configuration,
-                expirationTime,
-                maximumCapacity,
-                scheduledExecutor);
+                curatorFrameworkWrapper.asCuratorFramework(), configuration, scheduledExecutor);
     }
 
     @Override

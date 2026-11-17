@@ -39,12 +39,10 @@ import org.apache.flink.runtime.leaderretrieval.LeaderRetrievalService;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
-import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -169,17 +167,9 @@ public class KubernetesLeaderElectionHaServices extends AbstractHaServices {
     }
 
     @Override
-    public ArchivedApplicationStore createArchivedApplicationStore(
-            Duration expirationTime, int maximumCapacity, ScheduledExecutor scheduledExecutor)
-            throws Exception {
+    public ArchivedApplicationStore createArchivedApplicationStore() throws Exception {
         return KubernetesUtils.createArchivedApplicationStore(
-                configuration,
-                kubeClient,
-                getClusterConfigMap(),
-                lockIdentity,
-                expirationTime,
-                maximumCapacity,
-                scheduledExecutor);
+                configuration, kubeClient, getClusterConfigMap(), lockIdentity, scheduledExecutor);
     }
 
     private String getClusterConfigMap() {
