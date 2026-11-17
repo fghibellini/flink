@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.dispatcher;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
@@ -39,9 +40,9 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -55,7 +56,7 @@ public class MemoryArchivedApplicationStore implements ArchivedApplicationStore 
 
     private final Cache<ApplicationID, ArchivedApplication> archivedApplicationCache;
 
-    private final Map<JobID, ApplicationID> jobIdToApplicationId = new HashMap<>();
+    private final Map<JobID, ApplicationID> jobIdToApplicationId = new ConcurrentHashMap<>();
 
     @Nullable private final ScheduledFuture<?> cleanupFuture;
 
@@ -96,20 +97,20 @@ public class MemoryArchivedApplicationStore implements ArchivedApplicationStore 
             cacheBuilder.ticker(ticker);
         }
 
-        if (evictionListener != null) {
-            this.archivedApplicationCache =
-                    cacheBuilder
-                            .removalListener(
-                                    (RemovalListener<ApplicationID, ArchivedApplication>)
-                                            notification -> {
-                                                if (notification.wasEvicted()) {
-                                                    evictionListener.accept(notification.getKey());
-                                                }
-                                            })
-                            .build();
-        } else {
-            this.archivedApplicationCache = cacheBuilder.build();
-        }
+        cacheBuilder.removalListener(
+                (RemovalListener<ApplicationID, ArchivedApplication>)
+                        notification -> {
+                            if (notification.wasEvicted()) {
+                                final ApplicationID applicationId = notification.getKey();
+                                evictionHandler(notification.getValue());
+                                if (evictionListener != null) {
+                                    evictionListener.accept(applicationId);
+                                }
+                            }
+                        });
+
+        this.archivedApplicationCache = cacheBuilder.build();
+
         if (scheduledExecutor != null) {
             this.cleanupFuture =
                     scheduledExecutor.scheduleWithFixedDelay(
@@ -141,6 +142,15 @@ public class MemoryArchivedApplicationStore implements ArchivedApplicationStore 
                 .forEach(jobId -> jobIdToApplicationId.put(jobId, applicationId));
 
         archivedApplicationCache.put(archivedApplication.getApplicationId(), archivedApplication);
+    }
+
+    private void evictionHandler(ArchivedApplication archivedApplication) {
+        jobIdToApplicationId.keySet().removeAll(archivedApplication.getJobs().keySet());
+    }
+
+    @VisibleForTesting
+    boolean isJobTracked(JobID jobId) {
+        return jobIdToApplicationId.containsKey(jobId);
     }
 
     @Override

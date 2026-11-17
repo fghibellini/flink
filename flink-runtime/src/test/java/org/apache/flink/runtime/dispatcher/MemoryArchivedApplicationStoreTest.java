@@ -36,6 +36,7 @@ import org.apache.flink.util.concurrent.ScheduledExecutorServiceAdapter;
 
 import org.apache.flink.shaded.guava33.com.google.common.base.Ticker;
 
+import org.assertj.core.api.Assertions;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -43,6 +44,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -276,6 +278,33 @@ class MemoryArchivedApplicationStoreTest extends TestLogger {
             assertThat(
                     archivedApplicationStore.getApplicationDetails(),
                     Matchers.containsInAnyOrder(applicationDetails.toArray()));
+        }
+    }
+
+    /** Tests that the job id mappings of an evicted application are dropped. */
+    @Test
+    void testEvictionRemovesJobIdMappings() throws IOException {
+        final Iterator<ArchivedApplication> archivedApplications =
+                generateTerminalArchivedApplications(2).iterator();
+        final ArchivedApplication evictedApplication = archivedApplications.next();
+        final ArchivedApplication retainedApplication = archivedApplications.next();
+
+        try (final MemoryArchivedApplicationStore archivedApplicationStore =
+                new MemoryArchivedApplicationStore(
+                        Duration.ofHours(1),
+                        // maximumCapacity=1 ensures evictedApplication will be evicted
+                        // as soon as retainedApplication is added
+                        1,
+                        null,
+                        Ticker.systemTicker())) {
+            archivedApplicationStore.put(evictedApplication);
+            archivedApplicationStore.put(retainedApplication);
+
+            Assertions.assertThat(evictedApplication.getJobs().keySet())
+                    .isNotEmpty()
+                    .noneMatch(archivedApplicationStore::isJobTracked);
+            Assertions.assertThat(retainedApplication.getJobs().keySet())
+                    .allMatch(archivedApplicationStore::isJobTracked);
         }
     }
 
