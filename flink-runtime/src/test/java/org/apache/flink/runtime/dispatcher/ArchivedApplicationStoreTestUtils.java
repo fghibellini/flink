@@ -48,6 +48,7 @@ import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.security.token.DelegationTokenManager;
 import org.apache.flink.runtime.webmonitor.retriever.MetricQueryServiceRetriever;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.clock.SystemClock;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.apache.flink.shaded.guava33.com.google.common.base.Ticker;
@@ -324,7 +325,8 @@ public class ArchivedApplicationStoreTestUtils {
                                         Duration.ofHours(1L),
                                         Integer.MAX_VALUE,
                                         scheduledExecutor,
-                                        Ticker.systemTicker());
+                                        Ticker.systemTicker(),
+                                        SystemClock.getInstance());
                         break;
                     }
                 default:

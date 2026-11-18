@@ -30,7 +30,7 @@
             <td><h5>completed-application-store.type</h5></td>
             <td style="word-wrap: break-word;">File</td>
             <td><p>Enum</p></td>
-            <td>Determines which store implementation is used in session cluster. Accepted values are:<ul><li>'File': the file store keeps the completed applications in files</li><li>'Memory': the memory store keeps the completed applications in memory. You may need to limit the <code class="highlighter-rouge">completed-application-store.max-capacity</code> to mitigate FullGC or OOM when there are too many applications</li><li>'HA': the HA store keeps the completed applications in memory and additionally persists them in the high-availability storage. Requires high availability to be enabled</li></ul><br /><br />Possible values:<ul><li>"File"</li><li>"Memory"</li><li>"HA"</li></ul></td>
+            <td>Determines which store implementation is used in session cluster. Accepted values are:<ul><li>'File': the file store keeps the completed applications in files</li><li>'Memory': the memory store keeps the completed applications in memory. You may need to limit the <code class="highlighter-rouge">completed-application-store.max-capacity</code> to mitigate FullGC or OOM when there are too many applications</li><li>'HA': the HA store keeps the completed applications in memory and additionally persists them in the high-availability storage, from which they are restored when a JobManager gains leadership. Requires high availability to be enabled</li></ul><br /><br />Possible values:<ul><li>"File"</li><li>"Memory"</li><li>"HA"</li></ul></td>
         </tr>
         <tr>
             <td><h5>jobmanager.adaptive-scheduler.executing.cooldown-after-rescaling</h5></td>

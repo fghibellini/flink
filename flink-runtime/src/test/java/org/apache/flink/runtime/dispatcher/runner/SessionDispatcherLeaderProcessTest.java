@@ -26,6 +26,8 @@ import org.apache.flink.runtime.application.AbstractApplication;
 import org.apache.flink.runtime.application.SingleJobApplication;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.client.JobSubmissionException;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.TestingApplication;
 import org.apache.flink.runtime.highavailability.ApplicationResult;
 import org.apache.flink.runtime.highavailability.ApplicationResultStore;
@@ -101,6 +103,8 @@ class SessionDispatcherLeaderProcessTest {
     private ApplicationStore applicationStore;
     private ApplicationResultStore applicationResultStore;
 
+    private ArchivedApplicationStore archivedApplicationStore;
+
     private BlobServer blobServer;
 
     private AbstractDispatcherLeaderProcess.DispatcherGatewayServiceFactory
@@ -125,6 +129,7 @@ class SessionDispatcherLeaderProcessTest {
         jobResultStore = TestingJobResultStore.builder().build();
         applicationStore = TestingApplicationStore.newBuilder().build();
         applicationResultStore = TestingApplicationResultStore.builder().build();
+        archivedApplicationStore = new MemoryArchivedApplicationStore();
         dispatcherServiceFactory =
                 createFactoryBasedOnGenericSupplier(
                         () -> TestingDispatcherGatewayService.newBuilder().build());
@@ -642,6 +647,45 @@ class SessionDispatcherLeaderProcessTest {
     }
 
     @Test
+    void recoverArchivedApplications_completesBeforeDispatcherServiceCreation() throws Exception {
+        final OneShotLatch archivedApplicationRecoveryStartedLatch = new OneShotLatch();
+        final OneShotLatch completeArchivedApplicationRecoveryLatch = new OneShotLatch();
+        final OneShotLatch createDispatcherServiceLatch = new OneShotLatch();
+
+        this.archivedApplicationStore =
+                new MemoryArchivedApplicationStore() {
+                    @Override
+                    public void recover() throws Exception {
+                        archivedApplicationRecoveryStartedLatch.trigger();
+                        completeArchivedApplicationRecoveryLatch.await();
+                    }
+                };
+
+        this.dispatcherServiceFactory =
+                createFactoryBasedOnGenericSupplier(
+                        () -> {
+                            createDispatcherServiceLatch.trigger();
+                            return TestingDispatcherGatewayService.newBuilder().build();
+                        });
+
+        try (final SessionDispatcherLeaderProcess dispatcherLeaderProcess =
+                createDispatcherLeaderProcess()) {
+            dispatcherLeaderProcess.start();
+
+            archivedApplicationRecoveryStartedLatch.await();
+
+            assertThatThrownBy(
+                            () -> createDispatcherServiceLatch.await(10L, TimeUnit.MILLISECONDS),
+                            "No dispatcher service should be created before the archived applications have been recovered.")
+                    .isInstanceOf(TimeoutException.class);
+
+            completeArchivedApplicationRecoveryLatch.trigger();
+
+            createDispatcherServiceLatch.await();
+        }
+    }
+
+    @Test
     void closeAsync_duringApplicationRecovery_preventsDispatcherServiceCreation() throws Exception {
         final OneShotLatch applicationRecoveryStartedLatch = new OneShotLatch();
         final OneShotLatch completeApplicationRecoveryLatch = new OneShotLatch();
@@ -925,6 +969,20 @@ class SessionDispatcherLeaderProcessTest {
         runRecoveryFailureTest(testException);
     }
 
+    @Test
+    void recoverArchivedApplications_withRecoveryFailure_failsFatally() throws Exception {
+        final FlinkException testException = new FlinkException("Test exception");
+        archivedApplicationStore =
+                new MemoryArchivedApplicationStore() {
+                    @Override
+                    public void recover() throws Exception {
+                        throw testException;
+                    }
+                };
+
+        runRecoveryFailureTest(testException);
+    }
+
     private void runRecoveryFailureTest(FlinkException testException) throws Exception {
         try (final SessionDispatcherLeaderProcess dispatcherLeaderProcess =
                 createDispatcherLeaderProcess()) {
@@ -1070,6 +1128,7 @@ class SessionDispatcherLeaderProcessTest {
                 jobResultStore,
                 applicationStore,
                 applicationResultStore,
+                archivedApplicationStore,
                 blobServer,
                 ioExecutor,
                 fatalErrorHandler);

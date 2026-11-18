@@ -76,6 +76,7 @@ public class ApplicationDispatcherLeaderProcessFactoryFactory
         return new SessionDispatcherLeaderProcessFactory(
                 dispatcherServiceFactory,
                 persistenceComponentFactory,
+                partialDispatcherServices.getArchivedApplicationStore(),
                 partialDispatcherServices.getBlobServer(),
                 ioExecutor,
                 fatalErrorHandler);

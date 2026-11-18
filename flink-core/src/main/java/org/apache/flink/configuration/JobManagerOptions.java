@@ -436,7 +436,8 @@ public class JobManagerOptions {
                                                                             .key())),
                                                     text(
                                                             "'HA': the HA store keeps the completed applications in memory and"
-                                                                    + " additionally persists them in the high-availability storage."
+                                                                    + " additionally persists them in the high-availability storage,"
+                                                                    + " from which they are restored when a JobManager gains leadership."
                                                                     + " Requires high availability to be enabled"))
                                             .build());
 

@@ -26,6 +26,7 @@ import org.apache.flink.configuration.RpcOptions;
 import org.apache.flink.runtime.application.AbstractApplication;
 import org.apache.flink.runtime.application.SingleJobApplication;
 import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.Dispatcher;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
@@ -78,6 +79,8 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
 
     private final ApplicationResultStore applicationResultStore;
 
+    private final ArchivedApplicationStore archivedApplicationStore;
+
     private final BlobServer blobServer;
 
     private final Executor ioExecutor;
@@ -91,6 +94,7 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
             JobResultStore jobResultStore,
             ApplicationStore applicationStore,
             ApplicationResultStore applicationResultStore,
+            ArchivedApplicationStore archivedApplicationStore,
             BlobServer blobServer,
             Executor ioExecutor,
             FatalErrorHandler fatalErrorHandler) {
@@ -101,6 +105,7 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
         this.jobResultStore = jobResultStore;
         this.applicationStore = applicationStore;
         this.applicationResultStore = applicationResultStore;
+        this.archivedApplicationStore = archivedApplicationStore;
         this.blobServer = blobServer;
         this.ioExecutor = ioExecutor;
     }
@@ -212,11 +217,15 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
                                 },
                                 ioExecutor);
 
+        final CompletableFuture<Void> recoveredArchivedApplicationsFuture =
+                CompletableFuture.runAsync(this::recoverArchivedApplicationsIfRunning, ioExecutor);
+
         return CompletableFuture.allOf(
                         dirtyJobResultsFuture,
                         recoveredJobsFuture,
                         dirtyApplicationResultsFuture,
-                        recoveredApplicationsFuture)
+                        recoveredApplicationsFuture,
+                        recoveredArchivedApplicationsFuture)
                 .thenRun(
                         () ->
                                 createDispatcherIfRunning(
@@ -302,6 +311,19 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
         } catch (IOException e) {
             throw new FlinkRuntimeException(
                     "Could not retrieve ApplicationResults from ApplicationResultStore", e);
+        }
+    }
+
+    private void recoverArchivedApplicationsIfRunning() {
+        runUnsynchronizedIfRunning(this::recoverArchivedApplications);
+    }
+
+    private void recoverArchivedApplications() {
+        try {
+            archivedApplicationStore.recover();
+        } catch (Exception e) {
+            throw new FlinkRuntimeException(
+                    "Could not recover archived applications from ArchivedApplicationStore", e);
         }
     }
 
@@ -551,6 +573,7 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
             JobResultStore jobResultStore,
             ApplicationStore applicationStore,
             ApplicationResultStore applicationResultStore,
+            ArchivedApplicationStore archivedApplicationStore,
             BlobServer blobServer,
             Executor ioExecutor,
             FatalErrorHandler fatalErrorHandler) {
@@ -561,6 +584,7 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
                 jobResultStore,
                 applicationStore,
                 applicationResultStore,
+                archivedApplicationStore,
                 blobServer,
                 ioExecutor,
                 fatalErrorHandler);

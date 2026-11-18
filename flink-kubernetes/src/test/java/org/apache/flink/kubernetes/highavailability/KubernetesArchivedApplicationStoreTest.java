@@ -90,12 +90,60 @@ class KubernetesArchivedApplicationStoreTest extends KubernetesHighAvailabilityT
         };
     }
 
+    @Test
+    void testPersistedApplicationsAreRecovered() throws Exception {
+        new Context() {
+            {
+                runTest(
+                        () -> {
+                            leaderCallbackGrantLeadership();
+                            configuration.set(
+                                    HighAvailabilityOptions.HA_STORAGE_PATH,
+                                    tempDir.toUri().toString());
+
+                            final ArchivedApplication archivedApplication =
+                                    createArchivedApplication();
+                            // entries of other components in the same ConfigMap are not recovered
+                            getLeaderConfigMap().getData().put("unrelated-key", "unrelated-value");
+
+                            try (final ArchivedApplicationStore archivedApplicationStore =
+                                    createArchivedApplicationStore()) {
+                                archivedApplicationStore.put(archivedApplication);
+                            }
+
+                            try (final ArchivedApplicationStore archivedApplicationStore =
+                                    createArchivedApplicationStore()) {
+                                archivedApplicationStore.recover();
+
+                                assertThat(archivedApplicationStore.size()).isOne();
+                                assertThat(
+                                                archivedApplicationStore.get(
+                                                        archivedApplication.getApplicationId()))
+                                        .contains(archivedApplication);
+                            }
+                        });
+            }
+
+            private ArchivedApplicationStore createArchivedApplicationStore() throws Exception {
+                return KubernetesUtils.createArchivedApplicationStore(
+                        configuration,
+                        flinkKubeClient,
+                        LEADER_CONFIGMAP_NAME,
+                        LOCK_IDENTITY,
+                        new ManuallyTriggeredScheduledExecutor());
+            }
+        };
+    }
+
     private static ArchivedApplication createArchivedApplication() {
+        final long[] statusTimestamps = new long[ApplicationState.values().length];
+        // recovered applications which ended longer than the expiration time ago are discarded
+        statusTimestamps[ApplicationState.FINISHED.ordinal()] = System.currentTimeMillis();
         return new ArchivedApplication(
                 ApplicationID.generate(),
                 "test-application",
                 ApplicationState.FINISHED,
-                new long[ApplicationState.values().length],
+                statusTimestamps,
                 Collections.emptyMap(),
                 Collections.emptyList());
     }

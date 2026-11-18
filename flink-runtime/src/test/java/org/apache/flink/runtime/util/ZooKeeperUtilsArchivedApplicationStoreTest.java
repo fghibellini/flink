@@ -96,12 +96,48 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
         }
     }
 
+    @Test
+    void testPersistedApplicationsAreRecovered() throws Exception {
+        final Configuration configuration = new Configuration();
+        configuration.set(
+                HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zooKeeperExtension.getConnectString());
+        configuration.set(HighAvailabilityOptions.HA_STORAGE_PATH, tempDir.toUri().toString());
+
+        final ArchivedApplication archivedApplication = createArchivedApplication();
+
+        final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper =
+                ZooKeeperUtils.startCuratorFramework(configuration, NoOpFatalErrorHandler.INSTANCE);
+        try {
+            final CuratorFramework client = curatorFrameworkWrapper.asCuratorFramework();
+
+            try (final ArchivedApplicationStore archivedApplicationStore =
+                    ZooKeeperUtils.createArchivedApplicationStore(
+                            client, configuration, new ManuallyTriggeredScheduledExecutor())) {
+                archivedApplicationStore.put(archivedApplication);
+            }
+
+            try (final ArchivedApplicationStore archivedApplicationStore =
+                    ZooKeeperUtils.createArchivedApplicationStore(
+                            client, configuration, new ManuallyTriggeredScheduledExecutor())) {
+                archivedApplicationStore.recover();
+
+                assertThat(archivedApplicationStore.get(archivedApplication.getApplicationId()))
+                        .contains(archivedApplication);
+            }
+        } finally {
+            curatorFrameworkWrapper.close();
+        }
+    }
+
     private static ArchivedApplication createArchivedApplication() {
+        final long[] statusTimestamps = new long[ApplicationState.values().length];
+        // recovered applications which ended longer than the expiration time ago are discarded
+        statusTimestamps[ApplicationState.FINISHED.ordinal()] = System.currentTimeMillis();
         return new ArchivedApplication(
                 ApplicationID.generate(),
                 "test-application",
                 ApplicationState.FINISHED,
-                new long[ApplicationState.values().length],
+                statusTimestamps,
                 Collections.emptyMap(),
                 Collections.emptyList());
     }

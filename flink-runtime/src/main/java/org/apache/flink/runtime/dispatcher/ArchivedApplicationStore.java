@@ -42,6 +42,18 @@ public interface ArchivedApplicationStore extends Closeable {
     int size();
 
     /**
+     * Recovers the {@link ArchivedApplication} instances which were persisted by a previous leader,
+     * so that they can be served by this store. It is called whenever the leadership is granted,
+     * before the {@link Dispatcher} is created.
+     *
+     * <p>Stores which do not persist the applications beyond the lifetime of the process have
+     * nothing to recover.
+     *
+     * @throws Exception if the persisted applications could not be listed
+     */
+    default void recover() throws Exception {}
+
+    /**
      * Get the {@link ArchivedApplication} for the given application id. Empty if it isn't stored.
      *
      * @param applicationId identifying the serializable application to retrieve

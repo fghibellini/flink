@@ -20,6 +20,7 @@ package org.apache.flink.runtime.dispatcher.runner;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.blob.BlobServer;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.jobmanager.PersistenceComponentFactory;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 
@@ -33,6 +34,7 @@ public class SessionDispatcherLeaderProcessFactory implements DispatcherLeaderPr
     private final AbstractDispatcherLeaderProcess.DispatcherGatewayServiceFactory
             dispatcherGatewayServiceFactory;
     private final PersistenceComponentFactory persistenceComponentFactory;
+    private final ArchivedApplicationStore archivedApplicationStore;
     private final BlobServer blobServer;
     private final Executor ioExecutor;
     private final FatalErrorHandler fatalErrorHandler;
@@ -41,11 +43,13 @@ public class SessionDispatcherLeaderProcessFactory implements DispatcherLeaderPr
             AbstractDispatcherLeaderProcess.DispatcherGatewayServiceFactory
                     dispatcherGatewayServiceFactory,
             PersistenceComponentFactory persistenceComponentFactory,
+            ArchivedApplicationStore archivedApplicationStore,
             BlobServer blobServer,
             Executor ioExecutor,
             FatalErrorHandler fatalErrorHandler) {
         this.dispatcherGatewayServiceFactory = dispatcherGatewayServiceFactory;
         this.persistenceComponentFactory = persistenceComponentFactory;
+        this.archivedApplicationStore = archivedApplicationStore;
         this.blobServer = blobServer;
         this.ioExecutor = ioExecutor;
         this.fatalErrorHandler = fatalErrorHandler;
@@ -60,6 +64,7 @@ public class SessionDispatcherLeaderProcessFactory implements DispatcherLeaderPr
                 persistenceComponentFactory.createJobResultStore(),
                 persistenceComponentFactory.createApplicationStore(),
                 persistenceComponentFactory.createApplicationResultStore(),
+                archivedApplicationStore,
                 blobServer,
                 ioExecutor,
                 fatalErrorHandler);

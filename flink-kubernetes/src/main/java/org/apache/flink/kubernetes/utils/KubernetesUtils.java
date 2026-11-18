@@ -60,6 +60,7 @@ import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.StringUtils;
+import org.apache.flink.util.clock.SystemClock;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 import org.apache.flink.util.function.FunctionUtils;
 
@@ -346,7 +347,8 @@ public class KubernetesUtils {
                 ArchivedApplicationStoreUtils.getExpirationTime(configuration),
                 configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY),
                 scheduledExecutor,
-                Ticker.systemTicker());
+                Ticker.systemTicker(),
+                SystemClock.getInstance());
     }
 
     /**

@@ -57,7 +57,8 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                     final Duration expirationTime =
                             ArchivedApplicationStoreUtils.getExpirationTime(configuration);
                     final int maximumCapacity =
-                            configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
+                            configuration.get(
+                                    JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
 
                     final File tmpDir =
                             new File(ConfigurationUtils.parseTempDirectories(configuration)[0]);
@@ -78,7 +79,8 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                     final Duration expirationTime =
                             ArchivedApplicationStoreUtils.getExpirationTime(configuration);
                     final int maximumCapacity =
-                            configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
+                            configuration.get(
+                                    JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
 
                     return new MemoryArchivedApplicationStore(
                             expirationTime,

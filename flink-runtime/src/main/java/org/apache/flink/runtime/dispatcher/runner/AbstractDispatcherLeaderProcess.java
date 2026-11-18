@@ -202,6 +202,16 @@ public abstract class AbstractDispatcherLeaderProcess implements DispatcherLeade
         return Optional.of(supplier.get());
     }
 
+    final void runUnsynchronizedIfRunning(Runnable action) {
+        synchronized (lock) {
+            if (state != State.RUNNING) {
+                return;
+            }
+        }
+
+        action.run();
+    }
+
     final <V> Optional<V> supplyIfRunning(Supplier<V> supplier) {
         synchronized (lock) {
             if (state != State.RUNNING) {

@@ -61,6 +61,7 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.state.SharedStateRegistryFactory;
 import org.apache.flink.runtime.zookeeper.ZooKeeperStateHandleStore;
 import org.apache.flink.streaming.api.graph.ExecutionPlan;
+import org.apache.flink.util.clock.SystemClock;
 import org.apache.flink.util.concurrent.Executors;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 import org.apache.flink.util.function.RunnableWithException;
@@ -651,7 +652,8 @@ public class ZooKeeperUtils {
                 ArchivedApplicationStoreUtils.getExpirationTime(configuration),
                 configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY),
                 scheduledExecutor,
-                Ticker.systemTicker());
+                Ticker.systemTicker(),
+                SystemClock.getInstance());
     }
 
     /**
