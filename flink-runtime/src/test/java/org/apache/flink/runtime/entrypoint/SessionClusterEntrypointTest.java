@@ -24,6 +24,7 @@ import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
@@ -33,6 +34,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,7 +54,7 @@ class SessionClusterEntrypointTest {
         try {
             assertThatThrownBy(
                             () ->
-                                    entrypoint.createArchivedApplicationStore(
+                                    entrypoint.createArchivedApplicationStoreFactory(
                                             configuration,
                                             new TestingHighAvailabilityServices(),
                                             new ManuallyTriggeredScheduledExecutor()))
@@ -63,26 +66,37 @@ class SessionClusterEntrypointTest {
     }
 
     @Test
-    void testHaArchivedApplicationStoreIsCreatedByHaServices() throws Exception {
+    void testHaArchivedApplicationStoresAreCreatedByHaServicesPerLeadershipSession()
+            throws Exception {
         final Configuration configuration = createHaArchivedApplicationStoreConfiguration();
         configuration.set(HighAvailabilityOptions.HA_MODE, "zookeeper");
 
-        final ArchivedApplicationStore haArchivedApplicationStore =
-                new MemoryArchivedApplicationStore();
+        final List<ArchivedApplicationStore> haArchivedApplicationStores = new ArrayList<>();
         final TestingHighAvailabilityServices haServices =
                 new TestingHighAvailabilityServices() {
                     @Override
                     public ArchivedApplicationStore createArchivedApplicationStore() {
-                        return haArchivedApplicationStore;
+                        final ArchivedApplicationStore archivedApplicationStore =
+                                new MemoryArchivedApplicationStore();
+                        haArchivedApplicationStores.add(archivedApplicationStore);
+                        return archivedApplicationStore;
                     }
                 };
 
         final TestingSessionClusterEntrypoint entrypoint =
                 new TestingSessionClusterEntrypoint(configuration);
-        try (final ArchivedApplicationStore archivedApplicationStore =
-                entrypoint.createArchivedApplicationStore(
+        try (final ArchivedApplicationStoreFactory archivedApplicationStoreFactory =
+                entrypoint.createArchivedApplicationStoreFactory(
                         configuration, haServices, new ManuallyTriggeredScheduledExecutor())) {
-            assertThat(archivedApplicationStore).isSameAs(haArchivedApplicationStore);
+            assertThat(haArchivedApplicationStores).isEmpty();
+
+            final ArchivedApplicationStore firstArchivedApplicationStore =
+                    archivedApplicationStoreFactory.createArchivedApplicationStore();
+            final ArchivedApplicationStore secondArchivedApplicationStore =
+                    archivedApplicationStoreFactory.createArchivedApplicationStore();
+
+            assertThat(haArchivedApplicationStores)
+                    .containsExactly(firstArchivedApplicationStore, secondArchivedApplicationStore);
         } finally {
             entrypoint.closeAsync().join();
         }

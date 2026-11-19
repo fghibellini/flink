@@ -51,7 +51,7 @@ public class PartialDispatcherServices {
 
     @Nonnull private final JobManagerMetricGroupFactory jobManagerMetricGroupFactory;
 
-    @Nonnull private final ArchivedApplicationStore archivedApplicationStore;
+    @Nonnull private final ArchivedApplicationStoreFactory archivedApplicationStoreFactory;
 
     @Nonnull private final FatalErrorHandler fatalErrorHandler;
 
@@ -72,7 +72,7 @@ public class PartialDispatcherServices {
             @Nonnull BlobServer blobServer,
             @Nonnull HeartbeatServices heartbeatServices,
             @Nonnull JobManagerMetricGroupFactory jobManagerMetricGroupFactory,
-            @Nonnull ArchivedApplicationStore archivedApplicationStore,
+            @Nonnull ArchivedApplicationStoreFactory archivedApplicationStoreFactory,
             @Nonnull FatalErrorHandler fatalErrorHandler,
             @Nonnull HistoryServerArchivist historyServerArchivist,
             @Nullable String metricQueryServiceAddress,
@@ -85,7 +85,7 @@ public class PartialDispatcherServices {
         this.blobServer = blobServer;
         this.heartbeatServices = heartbeatServices;
         this.jobManagerMetricGroupFactory = jobManagerMetricGroupFactory;
-        this.archivedApplicationStore = archivedApplicationStore;
+        this.archivedApplicationStoreFactory = archivedApplicationStoreFactory;
         this.fatalErrorHandler = fatalErrorHandler;
         this.historyServerArchivist = historyServerArchivist;
         this.metricQueryServiceAddress = metricQueryServiceAddress;
@@ -125,8 +125,8 @@ public class PartialDispatcherServices {
     }
 
     @Nonnull
-    public ArchivedApplicationStore getArchivedApplicationStore() {
-        return archivedApplicationStore;
+    public ArchivedApplicationStoreFactory getArchivedApplicationStoreFactory() {
+        return archivedApplicationStoreFactory;
     }
 
     @Nonnull

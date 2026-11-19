@@ -198,6 +198,8 @@ public interface HighAvailabilityServices
      * Creates an {@link ArchivedApplicationStore} which keeps the archived applications in memory
      * and additionally persists them in the highly-available storage.
      *
+     * <p>A new store is created for every leadership session and closed once the session ends.
+     *
      * @return archived application store which persists the applications in a highly-available
      *     fashion
      * @throws Exception if the archived application store could not be created

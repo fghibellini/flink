@@ -42,7 +42,7 @@ import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
-import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponent;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.parser.CommandLineParser;
@@ -169,7 +169,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
     @GuardedBy("lock")
     private DeterminismEnvelope<WorkingDirectory> workingDirectory;
 
-    private ArchivedApplicationStore archivedApplicationStore;
+    private ArchivedApplicationStoreFactory archivedApplicationStoreFactory;
 
     private final Thread shutDownHook;
     private RpcSystem rpcSystem;
@@ -301,7 +301,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                             heartbeatServices,
                             delegationTokenManager,
                             metricRegistry,
-                            archivedApplicationStore,
+                            archivedApplicationStoreFactory,
                             new RpcMetricQueryServiceRetriever(
                                     metricRegistry.getMetricQueryServiceRpcService()),
                             failureEnrichers,
@@ -421,8 +421,8 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
 
             FileSystem.attachMetrics(processMetricGroup);
 
-            archivedApplicationStore =
-                    createArchivedApplicationStore(
+            archivedApplicationStoreFactory =
+                    createArchivedApplicationStoreFactory(
                             configuration, haServices, commonRpcService.getScheduledExecutor());
         }
     }
@@ -506,11 +506,11 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
                 }
             }
 
-            // the archived application store might be backed by the HA services
-            if (archivedApplicationStore != null) {
+            // the archived application stores might be backed by the HA services
+            if (archivedApplicationStoreFactory != null) {
                 try {
-                    archivedApplicationStore.close();
-                    archivedApplicationStore = null;
+                    archivedApplicationStoreFactory.close();
+                    archivedApplicationStoreFactory = null;
                 } catch (Throwable t) {
                     exception = ExceptionUtils.firstOrSuppressed(t, exception);
                 }
@@ -696,7 +696,7 @@ public abstract class ClusterEntrypoint implements AutoCloseableAsync, FatalErro
             createDispatcherResourceManagerComponentFactory(Configuration configuration)
                     throws IOException;
 
-    protected abstract ArchivedApplicationStore createArchivedApplicationStore(
+    protected abstract ArchivedApplicationStoreFactory createArchivedApplicationStoreFactory(
             Configuration configuration,
             HighAvailabilityServices haServices,
             ScheduledExecutor scheduledExecutor)

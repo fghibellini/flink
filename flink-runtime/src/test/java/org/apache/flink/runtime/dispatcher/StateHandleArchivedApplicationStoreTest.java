@@ -20,12 +20,13 @@ package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.api.common.ApplicationState;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.application.ArchivedApplication;
 import org.apache.flink.runtime.persistence.IntegerResourceVersion;
 import org.apache.flink.runtime.persistence.StateHandleStore;
 import org.apache.flink.runtime.persistence.TestingRetrievableStateStorageHelper;
 import org.apache.flink.runtime.persistence.TestingStateHandleStore;
-import org.apache.flink.runtime.util.ZooKeeperUtils;
+import org.apache.flink.runtime.state.RetrievableStateHandle;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.clock.ManualClock;
 
@@ -33,16 +34,13 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreTestUtils.generateTerminalArchivedApplications;
@@ -59,8 +57,6 @@ class StateHandleArchivedApplicationStoreTest {
 
     private final Map<String, ArchivedApplication> persistedApplications = new HashMap<>();
 
-    private final List<String> retrievedNames = new ArrayList<>();
-
     private final Set<String> lockedNames = new HashSet<>();
 
     private final TestingRetrievableStateStorageHelper<ArchivedApplication> storageHelper =
@@ -73,27 +69,21 @@ class StateHandleArchivedApplicationStoreTest {
                                 if (persistedApplications.putIfAbsent(name, application) != null) {
                                     throw new StateHandleStore.AlreadyExistException(name);
                                 }
+                                lockedNames.add(name);
                                 return null;
                             })
-                    .setRemoveFunction(name -> persistedApplications.remove(name) != null)
-                    // ZooKeeper lists the child nodes, i.e. the names without the leading slash
-                    .setGetAllHandlesSupplier(
-                            () ->
-                                    persistedApplications.keySet().stream()
-                                            .map(ZooKeeperUtils::trimStartingSlash)
-                                            .collect(Collectors.toList()))
-                    .setGetFunction(
+                    .setRemoveFunction(
                             name -> {
-                                retrievedNames.add(name);
-                                final ArchivedApplication application =
-                                        persistedApplications.get(name);
-                                if (application == null) {
-                                    throw new StateHandleStore.NotExistException(name);
-                                }
-                                lockedNames.add(name);
-                                return storageHelper.store(application);
+                                lockedNames.remove(name);
+                                return persistedApplications.remove(name) != null;
                             })
-                    .setReleaseConsumer(lockedNames::remove);
+                    .setGetAllSupplier(
+                            () ->
+                                    persistedApplications.values().stream()
+                                            .map(this::lockAndRetrieveHandle)
+                                            .collect(Collectors.toList()))
+                    .setReleaseConsumer(lockedNames::remove)
+                    .setReleaseAllHandlesRunnable(lockedNames::clear);
 
     @Test
     void testPutPersistsApplication() throws IOException {
@@ -179,27 +169,30 @@ class StateHandleArchivedApplicationStoreTest {
     }
 
     @Test
-    void testCloseReleasesLocksButKeepsPersistedApplications() throws IOException {
-        final ArchivedApplication archivedApplication =
-                generateTerminalArchivedApplications(1).iterator().next();
-        final AtomicBoolean locksReleased = new AtomicBoolean(false);
+    void testCloseReleasesLocksButKeepsPersistedApplications() throws Exception {
+        final ArchivedApplication recoveredApplication =
+                createArchivedApplication(clock.absoluteTimeMillis());
+        final ArchivedApplication putApplication =
+                createArchivedApplication(clock.absoluteTimeMillis());
+        persist(recoveredApplication);
         final ArchivedApplicationStore store =
-                createStore(
-                        stateHandleStoreBuilder
-                                .setReleaseAllHandlesRunnable(() -> locksReleased.set(true))
-                                .build(),
-                        Integer.MAX_VALUE);
+                createStore(stateHandleStoreBuilder.build(), Integer.MAX_VALUE);
 
-        store.put(archivedApplication);
+        store.recover();
+        store.put(putApplication);
+
+        assertThat(lockedNames)
+                .containsExactlyInAnyOrder(nameOf(recoveredApplication), nameOf(putApplication));
+
         store.close();
 
-        assertThat(locksReleased).isTrue();
+        assertThat(lockedNames).isEmpty();
         assertThat(persistedApplications)
-                .containsOnly(entry(nameOf(archivedApplication), archivedApplication));
+                .containsOnlyKeys(nameOf(recoveredApplication), nameOf(putApplication));
     }
 
     @Test
-    void testRecoverLoadsPersistedApplicationsAndReleasesTheirLocks() throws Exception {
+    void testRecoverLoadsPersistedApplicationsAndKeepsTheirLocks() throws Exception {
         final ArchivedApplication firstApplication =
                 createArchivedApplication(clock.absoluteTimeMillis());
         final ArchivedApplication secondApplication =
@@ -215,32 +208,14 @@ class StateHandleArchivedApplicationStoreTest {
                     .containsSame(firstApplication);
             assertThat(store.get(secondApplication.getApplicationId()))
                     .containsSame(secondApplication);
-            assertThat(retrievedNames)
+            assertThat(lockedNames)
                     .containsExactlyInAnyOrder(nameOf(firstApplication), nameOf(secondApplication));
-            assertThat(lockedNames).isEmpty();
             assertThat(persistedApplications).hasSize(2);
         }
     }
 
     @Test
-    void testRecoverSkipsApplicationsWhichAreAlreadyStored() throws Exception {
-        final ArchivedApplication storedApplication =
-                createArchivedApplication(clock.absoluteTimeMillis());
-
-        try (final ArchivedApplicationStore store =
-                createStore(stateHandleStoreBuilder.build(), Integer.MAX_VALUE)) {
-            store.put(storedApplication);
-
-            store.recover();
-
-            assertThat(retrievedNames).isEmpty();
-            assertThat(store.get(storedApplication.getApplicationId()))
-                    .containsSame(storedApplication);
-        }
-    }
-
-    @Test
-    void testRecoverSkipsUnreadableApplications() throws Exception {
+    void testRecoverSkipsUnreadableApplicationsAndReleasesTheirLocks() throws Exception {
         final ArchivedApplication unreadableApplication =
                 createArchivedApplication(clock.absoluteTimeMillis());
         final ArchivedApplication readableApplication =
@@ -253,24 +228,15 @@ class StateHandleArchivedApplicationStoreTest {
                     }
                     return application;
                 });
-        final StateHandleStore<ArchivedApplication, IntegerResourceVersion> stateHandleStore =
-                stateHandleStoreBuilder
-                        .setGetAllHandlesSupplier(
-                                () ->
-                                        Arrays.asList(
-                                                "malformed-name",
-                                                trimmedNameOf(unreadableApplication),
-                                                trimmedNameOf(readableApplication)))
-                        .build();
 
         try (final ArchivedApplicationStore store =
-                createStore(stateHandleStore, Integer.MAX_VALUE)) {
+                createStore(stateHandleStoreBuilder.build(), Integer.MAX_VALUE)) {
             store.recover();
 
             assertThat(store.size()).isOne();
             assertThat(store.get(readableApplication.getApplicationId()))
                     .containsSame(readableApplication);
-            assertThat(lockedNames).isEmpty();
+            assertThat(lockedNames).containsExactly(nameOf(readableApplication));
             assertThat(persistedApplications).hasSize(2);
         }
     }
@@ -291,6 +257,7 @@ class StateHandleArchivedApplicationStoreTest {
             assertThat(store.get(expiredApplication.getApplicationId())).isEmpty();
             assertThat(store.get(unexpiredApplication.getApplicationId()))
                     .containsSame(unexpiredApplication);
+            assertThat(lockedNames).containsExactly(nameOf(unexpiredApplication));
             assertThat(persistedApplications)
                     .containsOnly(entry(nameOf(unexpiredApplication), unexpiredApplication));
         }
@@ -305,11 +272,11 @@ class StateHandleArchivedApplicationStoreTest {
         persist(newerApplication, olderApplication);
         final StateHandleStore<ArchivedApplication, IntegerResourceVersion> stateHandleStore =
                 stateHandleStoreBuilder
-                        .setGetAllHandlesSupplier(
+                        .setGetAllSupplier(
                                 () ->
                                         Arrays.asList(
-                                                trimmedNameOf(newerApplication),
-                                                trimmedNameOf(olderApplication)))
+                                                lockAndRetrieveHandle(newerApplication),
+                                                lockAndRetrieveHandle(olderApplication)))
                         .build();
 
         try (final ArchivedApplicationStore store = createStore(stateHandleStore, 1)) {
@@ -328,7 +295,7 @@ class StateHandleArchivedApplicationStoreTest {
         final FlinkException testException = new FlinkException("Test exception.");
         final StateHandleStore<ArchivedApplication, IntegerResourceVersion> stateHandleStore =
                 stateHandleStoreBuilder
-                        .setGetAllHandlesSupplier(
+                        .setGetAllSupplier(
                                 () -> {
                                     throw testException;
                                 })
@@ -338,6 +305,18 @@ class StateHandleArchivedApplicationStoreTest {
                 createStore(stateHandleStore, Integer.MAX_VALUE)) {
             assertThatThrownBy(store::recover).isSameAs(testException);
         }
+    }
+
+    @Test
+    void testRecoverFailsAfterClose() throws Exception {
+        persist(createArchivedApplication(clock.absoluteTimeMillis()));
+        final ArchivedApplicationStore store =
+                createStore(stateHandleStoreBuilder.build(), Integer.MAX_VALUE);
+
+        store.close();
+
+        assertThatThrownBy(store::recover).isInstanceOf(IllegalStateException.class);
+        assertThat(lockedNames).isEmpty();
     }
 
     @Test
@@ -398,8 +377,11 @@ class StateHandleArchivedApplicationStoreTest {
                 Collections.emptyList());
     }
 
-    private static String trimmedNameOf(ArchivedApplication archivedApplication) {
-        return ZooKeeperUtils.trimStartingSlash(nameOf(archivedApplication));
+    private Tuple2<RetrievableStateHandle<ArchivedApplication>, String> lockAndRetrieveHandle(
+            ArchivedApplication archivedApplication) {
+        final String name = nameOf(archivedApplication);
+        lockedNames.add(name);
+        return Tuple2.of(storageHelper.store(archivedApplication), name);
     }
 
     private static String nameOf(ArchivedApplication archivedApplication) {

@@ -23,7 +23,7 @@ import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.JobManagerOptions;
-import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.dispatcher.FileArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -44,7 +44,7 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
     }
 
     @Override
-    protected ArchivedApplicationStore createArchivedApplicationStore(
+    protected ArchivedApplicationStoreFactory createArchivedApplicationStoreFactory(
             Configuration configuration,
             HighAvailabilityServices haServices,
             ScheduledExecutor scheduledExecutor)
@@ -66,13 +66,14 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                             configuration.get(
                                     JobManagerOptions.COMPLETED_APPLICATION_STORE_CACHE_SIZE);
 
-                    return new FileArchivedApplicationStore(
-                            tmpDir,
-                            expirationTime,
-                            maximumCapacity,
-                            maximumCacheSizeBytes,
-                            scheduledExecutor,
-                            Ticker.systemTicker());
+                    return ArchivedApplicationStoreFactory.shared(
+                            new FileArchivedApplicationStore(
+                                    tmpDir,
+                                    expirationTime,
+                                    maximumCapacity,
+                                    maximumCacheSizeBytes,
+                                    scheduledExecutor,
+                                    Ticker.systemTicker()));
                 }
             case Memory:
                 {
@@ -82,11 +83,12 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                             configuration.get(
                                     JobManagerOptions.COMPLETED_APPLICATION_STORE_MAX_CAPACITY);
 
-                    return new MemoryArchivedApplicationStore(
-                            expirationTime,
-                            maximumCapacity,
-                            scheduledExecutor,
-                            Ticker.systemTicker());
+                    return ArchivedApplicationStoreFactory.shared(
+                            new MemoryArchivedApplicationStore(
+                                    expirationTime,
+                                    maximumCapacity,
+                                    scheduledExecutor,
+                                    Ticker.systemTicker()));
                 }
             case HA:
                 {
@@ -98,7 +100,9 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                                         HighAvailabilityOptions.HA_MODE.key()));
                     }
 
-                    return haServices.createArchivedApplicationStore();
+                    // every leadership session gets its own store, so that the locks of the
+                    // persisted applications are released once the leadership is lost
+                    return haServices::createArchivedApplicationStore;
                 }
             default:
                 {

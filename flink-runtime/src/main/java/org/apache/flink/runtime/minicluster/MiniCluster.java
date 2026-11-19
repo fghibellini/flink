@@ -48,6 +48,7 @@ import org.apache.flink.runtime.client.ClientUtils;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.client.JobStatusMessage;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
@@ -568,7 +569,8 @@ public class MiniCluster implements AutoCloseableAsync {
                         heartbeatServices,
                         delegationTokenManager,
                         metricRegistry,
-                        new MemoryArchivedApplicationStore(),
+                        ArchivedApplicationStoreFactory.shared(
+                                new MemoryArchivedApplicationStore()),
                         metricQueryServiceRetriever,
                         Collections.emptySet(),
                         fatalErrorHandler);

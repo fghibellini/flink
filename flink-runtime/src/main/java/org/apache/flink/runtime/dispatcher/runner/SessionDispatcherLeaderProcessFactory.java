@@ -21,8 +21,10 @@ package org.apache.flink.runtime.dispatcher.runner;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.jobmanager.PersistenceComponentFactory;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
+import org.apache.flink.util.FlinkRuntimeException;
 
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -34,7 +36,7 @@ public class SessionDispatcherLeaderProcessFactory implements DispatcherLeaderPr
     private final AbstractDispatcherLeaderProcess.DispatcherGatewayServiceFactory
             dispatcherGatewayServiceFactory;
     private final PersistenceComponentFactory persistenceComponentFactory;
-    private final ArchivedApplicationStore archivedApplicationStore;
+    private final ArchivedApplicationStoreFactory archivedApplicationStoreFactory;
     private final BlobServer blobServer;
     private final Executor ioExecutor;
     private final FatalErrorHandler fatalErrorHandler;
@@ -43,13 +45,13 @@ public class SessionDispatcherLeaderProcessFactory implements DispatcherLeaderPr
             AbstractDispatcherLeaderProcess.DispatcherGatewayServiceFactory
                     dispatcherGatewayServiceFactory,
             PersistenceComponentFactory persistenceComponentFactory,
-            ArchivedApplicationStore archivedApplicationStore,
+            ArchivedApplicationStoreFactory archivedApplicationStoreFactory,
             BlobServer blobServer,
             Executor ioExecutor,
             FatalErrorHandler fatalErrorHandler) {
         this.dispatcherGatewayServiceFactory = dispatcherGatewayServiceFactory;
         this.persistenceComponentFactory = persistenceComponentFactory;
-        this.archivedApplicationStore = archivedApplicationStore;
+        this.archivedApplicationStoreFactory = archivedApplicationStoreFactory;
         this.blobServer = blobServer;
         this.ioExecutor = ioExecutor;
         this.fatalErrorHandler = fatalErrorHandler;
@@ -64,9 +66,17 @@ public class SessionDispatcherLeaderProcessFactory implements DispatcherLeaderPr
                 persistenceComponentFactory.createJobResultStore(),
                 persistenceComponentFactory.createApplicationStore(),
                 persistenceComponentFactory.createApplicationResultStore(),
-                archivedApplicationStore,
+                createArchivedApplicationStore(),
                 blobServer,
                 ioExecutor,
                 fatalErrorHandler);
+    }
+
+    private ArchivedApplicationStore createArchivedApplicationStore() {
+        try {
+            return archivedApplicationStoreFactory.createArchivedApplicationStore();
+        } catch (Exception e) {
+            throw new FlinkRuntimeException("Could not create the ArchivedApplicationStore.", e);
+        }
     }
 }

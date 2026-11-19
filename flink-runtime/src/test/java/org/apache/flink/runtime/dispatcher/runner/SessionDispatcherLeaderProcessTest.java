@@ -61,6 +61,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -270,7 +271,8 @@ class SessionDispatcherLeaderProcessTest {
                         ignoredExecutionPlanWriter,
                         ignoredJobResultStore,
                         ignoredApplicationStore,
-                        ignoredApplicationResultStore) -> {
+                        ignoredApplicationResultStore,
+                        ignoredArchivedApplicationStore) -> {
                     recoveredExecutionPlansFuture.complete(recoveredJobs);
                     recoveredDirtyJobResultsFuture.complete(recoveredDirtyJobResults);
                     return TestingDispatcherGatewayService.newBuilder().build();
@@ -384,7 +386,8 @@ class SessionDispatcherLeaderProcessTest {
                         ignoredExecutionPlanWriter,
                         ignoredJobResultStore,
                         ignoredApplicationStore,
-                        ignoredApplicationResultStore) -> {
+                        ignoredApplicationResultStore,
+                        ignoredArchivedApplicationStore) -> {
                     recoveredApplicationsFuture.complete(recoveredApplications);
                     recoveredDirtyApplicationResultsFuture.complete(
                             recoveredDirtyApplicationResults);
@@ -443,7 +446,8 @@ class SessionDispatcherLeaderProcessTest {
                         ignoredExecutionPlanWriter,
                         ignoredJobResultStore,
                         ignoredApplicationStore,
-                        ignoredApplicationResultStore) -> {
+                        ignoredApplicationResultStore,
+                        ignoredArchivedApplicationStore) -> {
                     recoveredExecutionPlansFuture.complete(recoveredJobs);
                     recoveredDirtyJobResultsFuture.complete(recoveredDirtyJobResults);
                     return TestingDispatcherGatewayService.newBuilder().build();
@@ -486,6 +490,17 @@ class SessionDispatcherLeaderProcessTest {
                         .setStopRunnable(() -> applicationStoreStopFuture.complete(null))
                         .build();
 
+        final CompletableFuture<Void> archivedApplicationStoreCloseFuture =
+                new CompletableFuture<>();
+        archivedApplicationStore =
+                new MemoryArchivedApplicationStore() {
+                    @Override
+                    public void close() throws IOException {
+                        archivedApplicationStoreCloseFuture.complete(null);
+                        super.close();
+                    }
+                };
+
         final CompletableFuture<Void> dispatcherServiceTerminationFuture =
                 new CompletableFuture<>();
         dispatcherServiceFactory =
@@ -507,6 +522,7 @@ class SessionDispatcherLeaderProcessTest {
 
             assertThat(executionPlanStoreStopFuture).isNotDone();
             assertThat(applicationStoreStopFuture).isNotDone();
+            assertThat(archivedApplicationStoreCloseFuture).isNotDone();
             assertThat(terminationFuture).isNotDone();
 
             dispatcherServiceTerminationFuture.complete(null);
@@ -517,8 +533,39 @@ class SessionDispatcherLeaderProcessTest {
             // verify that we shut down the ApplicationStore
             applicationStoreStopFuture.get();
 
+            // verify that we closed the ArchivedApplicationStore of this leadership session
+            archivedApplicationStoreCloseFuture.get();
+
             // verify that we completed the dispatcher leader process shut down
             terminationFuture.get();
+        }
+    }
+
+    @Test
+    void createDispatcher_passesArchivedApplicationStore() throws Exception {
+        final CompletableFuture<ArchivedApplicationStore> passedArchivedApplicationStoreFuture =
+                new CompletableFuture<>();
+        dispatcherServiceFactory =
+                (ignoredDispatcherId,
+                        ignoredRecoveredJobs,
+                        ignoredRecoveredDirtyJobResults,
+                        ignoredRecoveredApplications,
+                        ignoredRecoveredDirtyApplicationResults,
+                        ignoredExecutionPlanWriter,
+                        ignoredJobResultStore,
+                        ignoredApplicationStore,
+                        ignoredApplicationResultStore,
+                        passedArchivedApplicationStore) -> {
+                    passedArchivedApplicationStoreFuture.complete(passedArchivedApplicationStore);
+                    return TestingDispatcherGatewayService.newBuilder().build();
+                };
+
+        try (final SessionDispatcherLeaderProcess dispatcherLeaderProcess =
+                createDispatcherLeaderProcess()) {
+            dispatcherLeaderProcess.start();
+
+            assertThat(passedArchivedApplicationStoreFuture.get())
+                    .isSameAs(archivedApplicationStore);
         }
     }
 
@@ -1095,7 +1142,8 @@ class SessionDispatcherLeaderProcessTest {
                 ignoredExecutionPlanWriter,
                 ignoredJobResultStore,
                 ignoredApplicationStore,
-                ignoredApplicationResultStore) -> createFunction.apply(recoveredJobs);
+                ignoredApplicationResultStore,
+                ignoredArchivedApplicationStore) -> createFunction.apply(recoveredJobs);
     }
 
     private AbstractDispatcherLeaderProcess.DispatcherGatewayServiceFactory
@@ -1109,7 +1157,8 @@ class SessionDispatcherLeaderProcessTest {
                 ignoredExecutionPlanWriter,
                 ignoredJobResultStore,
                 ignoredApplicationStore,
-                ignoredApplicationResultStore) -> supplier.get();
+                ignoredApplicationResultStore,
+                ignoredArchivedApplicationStore) -> supplier.get();
     }
 
     private void verifyOnAddedExecutionPlanResultDidNotFail(

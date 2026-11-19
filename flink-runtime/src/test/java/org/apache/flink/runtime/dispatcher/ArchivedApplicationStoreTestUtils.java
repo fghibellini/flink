@@ -302,31 +302,37 @@ public class ArchivedApplicationStoreTestUtils {
 
             JobManagerOptions.ArchivedApplicationStoreType archivedApplicationStoreType =
                     configuration.get(JobManagerOptions.COMPLETED_APPLICATION_STORE_TYPE);
-            final ArchivedApplicationStore archivedApplicationStore;
+            final ArchivedApplicationStoreFactory archivedApplicationStoreFactory;
             switch (archivedApplicationStoreType) {
                 case File:
                     {
-                        archivedApplicationStore =
-                                createFileArchivedApplicationStore(rootDir, scheduledExecutor);
+                        archivedApplicationStoreFactory =
+                                ArchivedApplicationStoreFactory.shared(
+                                        createFileArchivedApplicationStore(
+                                                rootDir, scheduledExecutor));
                         break;
                     }
                 case Memory:
                     {
-                        archivedApplicationStore = new MemoryArchivedApplicationStore();
+                        archivedApplicationStoreFactory =
+                                ArchivedApplicationStoreFactory.shared(
+                                        new MemoryArchivedApplicationStore());
                         break;
                     }
                 case HA:
                     {
-                        archivedApplicationStore =
-                                new StateHandleArchivedApplicationStore<>(
-                                        TestingStateHandleStore.<ArchivedApplication>newBuilder()
-                                                .build(),
-                                        ZooKeeperArchivedApplicationStoreUtil.INSTANCE,
-                                        Duration.ofHours(1L),
-                                        Integer.MAX_VALUE,
-                                        scheduledExecutor,
-                                        Ticker.systemTicker(),
-                                        SystemClock.getInstance());
+                        final TestingStateHandleStore<ArchivedApplication> stateHandleStore =
+                                TestingStateHandleStore.<ArchivedApplication>newBuilder().build();
+                        archivedApplicationStoreFactory =
+                                () ->
+                                        new StateHandleArchivedApplicationStore<>(
+                                                stateHandleStore,
+                                                ZooKeeperArchivedApplicationStoreUtil.INSTANCE,
+                                                Duration.ofHours(1L),
+                                                Integer.MAX_VALUE,
+                                                scheduledExecutor,
+                                                Ticker.systemTicker(),
+                                                SystemClock.getInstance());
                         break;
                     }
                 default:
@@ -348,7 +354,7 @@ public class ArchivedApplicationStoreTestUtils {
                             heartbeatServices,
                             delegationTokenManager,
                             metricRegistry,
-                            archivedApplicationStore,
+                            archivedApplicationStoreFactory,
                             metricQueryServiceRetriever,
                             Collections.emptySet(),
                             fatalErrorHandler));

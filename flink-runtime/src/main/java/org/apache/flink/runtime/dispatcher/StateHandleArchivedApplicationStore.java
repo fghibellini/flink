@@ -20,6 +20,7 @@ package org.apache.flink.runtime.dispatcher;
 
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.application.ArchivedApplication;
 import org.apache.flink.runtime.messages.webmonitor.ApplicationDetails;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
@@ -27,6 +28,7 @@ import org.apache.flink.runtime.messages.webmonitor.JobsOverview;
 import org.apache.flink.runtime.persistence.ResourceVersion;
 import org.apache.flink.runtime.persistence.StateHandleStore;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
+import org.apache.flink.runtime.state.RetrievableStateHandle;
 import org.apache.flink.util.clock.Clock;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
@@ -36,6 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+import javax.annotation.concurrent.GuardedBy;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -46,14 +49,18 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * {@link ArchivedApplicationStore} which serves the {@link ArchivedApplication} instances from
  * memory (see {@link MemoryArchivedApplicationStore}) and additionally persists every stored
  * application in a {@link StateHandleStore}.
  *
- * <p>The persisted applications are loaded into memory by {@link #recover()}. Applications which
- * already expired are removed instead.
+ * <p>A store is meant to be used during a single leadership session (see {@link
+ * ArchivedApplicationStoreFactory}). {@link #recover()} loads the persisted applications into
+ * memory and, like {@link #put(ArchivedApplication)}, locks their entries until the store is
+ * closed. Applications which already expired are removed instead. Closing the store releases all
+ * locks which it holds but keeps the persisted entries, so that the next leader can recover them.
  *
  * <p>If an application is already stored, in memory or in the {@link StateHandleStore}, the
  * existing entry is kept. This prevents e.g. the sparse {@link ArchivedApplication} which the
@@ -61,8 +68,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * complete one that was persisted before the failover.
  *
  * <p>Applications which are evicted from memory, because they expired or because the maximum
- * capacity was exceeded, are removed from the {@link StateHandleStore} as well. Closing the store
- * only releases the locks on the persisted entries but keeps them.
+ * capacity was exceeded, are removed from the {@link StateHandleStore} as well.
  *
  * <p>The names of the entries in the {@link StateHandleStore} are derived from the application ids
  * by the given {@link ArchivedApplicationStoreUtil}.
@@ -76,10 +82,14 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
             LoggerFactory.getLogger(StateHandleArchivedApplicationStore.class);
 
     /**
-     * Guards the {@link #stateHandleStore} which is accessed by puts as well as by evictions, which
-     * can be triggered by the periodic cleanup.
+     * Guards the {@link #stateHandleStore} which is accessed by puts and the recovery as well as by
+     * evictions, which can be triggered by the periodic cleanup.
      */
     private final Object lock = new Object();
+
+    /** Prevents a recovery which races with {@link #close()} from locking the persisted entries. */
+    @GuardedBy("lock")
+    private boolean running = true;
 
     private final StateHandleStore<ArchivedApplication, R> stateHandleStore;
 
@@ -133,60 +143,57 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
 
     @Override
     public void recover() throws Exception {
-        LOG.info("Recovering archived applications from {}.", stateHandleStore);
-
-        final Collection<String> names;
         synchronized (lock) {
-            names = stateHandleStore.getAllHandles();
-        }
+            checkState(running, "The store has already been closed.");
 
-        final List<ArchivedApplication> recoveredApplications = new ArrayList<>(names.size());
-        int numExpired = 0;
-        int numFailed = 0;
+            LOG.info("Recovering archived applications from {}.", stateHandleStore);
 
-        for (String name : names) {
-            final ArchivedApplication archivedApplication;
-            final boolean expired;
-            try {
-                final ApplicationID applicationId =
-                        archivedApplicationStoreUtil.nameToApplicationId(name);
-                if (memoryStore.get(applicationId).isPresent()) {
+            final List<Tuple2<RetrievableStateHandle<ArchivedApplication>, String>> handles =
+                    stateHandleStore.getAllAndLock();
+
+            final List<ArchivedApplication> recoveredApplications = new ArrayList<>(handles.size());
+            int numExpired = 0;
+            int numFailed = 0;
+
+            for (Tuple2<RetrievableStateHandle<ArchivedApplication>, String> handle : handles) {
+                final String name = handle.f1;
+                final ArchivedApplication archivedApplication;
+                try {
+                    archivedApplication = handle.f0.retrieveState();
+                } catch (Exception e) {
+                    numFailed++;
+                    LOG.warn(
+                            "Could not recover archived application {} from {}. Skipping it.",
+                            name,
+                            stateHandleStore,
+                            e);
+                    releaseQuietly(name);
                     continue;
                 }
-                archivedApplication = retrievePersistedApplication(applicationId);
-                expired = isExpired(archivedApplication);
-            } catch (Exception e) {
-                numFailed++;
-                LOG.warn(
-                        "Could not recover archived application {} from {}. Skipping it.",
-                        name,
-                        stateHandleStore,
-                        e);
-                continue;
+
+                if (isExpired(archivedApplication)) {
+                    numExpired++;
+                    removePersistedApplication(archivedApplication.getApplicationId());
+                } else {
+                    recoveredApplications.add(archivedApplication);
+                }
             }
 
-            if (expired) {
-                numExpired++;
-                removePersistedApplication(archivedApplication.getApplicationId());
-            } else {
-                recoveredApplications.add(archivedApplication);
+            // the oldest applications are put first, so that they are the first ones to be
+            // evicted if the maximum capacity is exceeded
+            recoveredApplications.sort(
+                    Comparator.comparingLong(StateHandleArchivedApplicationStore::getEndTime));
+            for (ArchivedApplication archivedApplication : recoveredApplications) {
+                memoryStore.put(archivedApplication);
             }
-        }
 
-        // the oldest applications are put first, so that they are the first ones to be evicted if
-        // the maximum capacity is exceeded
-        recoveredApplications.sort(
-                Comparator.comparingLong(StateHandleArchivedApplicationStore::getEndTime));
-        for (ArchivedApplication archivedApplication : recoveredApplications) {
-            memoryStore.put(archivedApplication);
+            LOG.info(
+                    "Recovered {} archived applications from {}. Removed {} expired and skipped {} unreadable archived applications.",
+                    recoveredApplications.size(),
+                    stateHandleStore,
+                    numExpired,
+                    numFailed);
         }
-
-        LOG.info(
-                "Recovered {} archived applications from {}. Removed {} expired and skipped {} unreadable archived applications.",
-                recoveredApplications.size(),
-                stateHandleStore,
-                numExpired,
-                numFailed);
     }
 
     @Override
@@ -252,9 +259,11 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
 
     @Override
     public void close() throws IOException {
-        memoryStore.close();
-
         synchronized (lock) {
+            running = false;
+
+            memoryStore.close();
+
             try {
                 stateHandleStore.releaseAll();
             } catch (Exception e) {
@@ -267,18 +276,15 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
         }
     }
 
-    private ArchivedApplication retrievePersistedApplication(ApplicationID applicationId)
-            throws Exception {
-        final String name = archivedApplicationStoreUtil.applicationIdToName(applicationId);
-
-        synchronized (lock) {
-            try {
-                return stateHandleStore.getAndLock(name).retrieveState();
-            } finally {
-                // the locks are only released on close(), so keeping this one would prevent
-                // subsequent leaders from removing the entry once it is evicted
-                stateHandleStore.release(name);
-            }
+    private void releaseQuietly(String name) {
+        try {
+            stateHandleStore.release(name);
+        } catch (Exception e) {
+            LOG.warn(
+                    "Could not release the lock of archived application {} in {}.",
+                    name,
+                    stateHandleStore,
+                    e);
         }
     }
 

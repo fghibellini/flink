@@ -97,13 +97,19 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
     }
 
     @Test
-    void testPersistedApplicationsAreRecovered() throws Exception {
+    void testPersistedApplicationsAreRecoveredAndLockedUntilClose() throws Exception {
+        final String archivedApplicationsPath = "/archived-applications";
         final Configuration configuration = new Configuration();
         configuration.set(
                 HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zooKeeperExtension.getConnectString());
         configuration.set(HighAvailabilityOptions.HA_STORAGE_PATH, tempDir.toUri().toString());
+        configuration.set(
+                HighAvailabilityOptions.HA_ZOOKEEPER_ARCHIVED_APPLICATIONS_PATH,
+                archivedApplicationsPath);
 
         final ArchivedApplication archivedApplication = createArchivedApplication();
+        final String lockZNodes =
+                archivedApplicationsPath + "/" + archivedApplication.getApplicationId() + "/locks";
 
         final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper =
                 ZooKeeperUtils.startCuratorFramework(configuration, NoOpFatalErrorHandler.INSTANCE);
@@ -114,7 +120,9 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
                     ZooKeeperUtils.createArchivedApplicationStore(
                             client, configuration, new ManuallyTriggeredScheduledExecutor())) {
                 archivedApplicationStore.put(archivedApplication);
+                assertThat(client.getChildren().forPath(lockZNodes)).hasSize(1);
             }
+            assertThat(client.getChildren().forPath(lockZNodes)).isEmpty();
 
             try (final ArchivedApplicationStore archivedApplicationStore =
                     ZooKeeperUtils.createArchivedApplicationStore(
@@ -123,7 +131,9 @@ class ZooKeeperUtilsArchivedApplicationStoreTest {
 
                 assertThat(archivedApplicationStore.get(archivedApplication.getApplicationId()))
                         .contains(archivedApplication);
+                assertThat(client.getChildren().forPath(lockZNodes)).hasSize(1);
             }
+            assertThat(client.getChildren().forPath(lockZNodes)).isEmpty();
         } finally {
             curatorFrameworkWrapper.close();
         }

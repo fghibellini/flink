@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.dispatcher.runner;
 
 import org.apache.flink.runtime.application.AbstractApplication;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.Dispatcher;
 import org.apache.flink.runtime.dispatcher.DispatcherFactory;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
@@ -66,7 +67,8 @@ class DefaultDispatcherGatewayServiceFactory
             ExecutionPlanWriter executionPlanWriter,
             JobResultStore jobResultStore,
             ApplicationStore applicationStore,
-            ApplicationResultStore applicationResultStore) {
+            ApplicationResultStore applicationResultStore,
+            ArchivedApplicationStore archivedApplicationStore) {
 
         final Dispatcher dispatcher;
         try {
@@ -85,7 +87,8 @@ class DefaultDispatcherGatewayServiceFactory
                                     executionPlanWriter,
                                     jobResultStore,
                                     applicationStore,
-                                    applicationResultStore));
+                                    applicationResultStore,
+                                    archivedApplicationStore));
         } catch (Exception e) {
             throw new FlinkRuntimeException("Could not create the Dispatcher rpc endpoint.", e);
         }

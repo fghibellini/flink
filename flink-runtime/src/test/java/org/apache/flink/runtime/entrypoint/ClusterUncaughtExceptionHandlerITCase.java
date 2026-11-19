@@ -20,7 +20,7 @@ package org.apache.flink.runtime.entrypoint;
 
 import org.apache.flink.configuration.ClusterOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.entrypoint.component.DefaultDispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.entrypoint.component.DispatcherResourceManagerComponentFactory;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
@@ -101,7 +101,7 @@ class ClusterUncaughtExceptionHandlerITCase {
         }
 
         @Override
-        protected ArchivedApplicationStore createArchivedApplicationStore(
+        protected ArchivedApplicationStoreFactory createArchivedApplicationStoreFactory(
                 Configuration configuration,
                 HighAvailabilityServices haServices,
                 ScheduledExecutor scheduledExecutor)

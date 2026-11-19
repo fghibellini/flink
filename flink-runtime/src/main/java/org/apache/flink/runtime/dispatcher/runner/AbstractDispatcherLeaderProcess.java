@@ -23,6 +23,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.application.AbstractApplication;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.highavailability.ApplicationResult;
@@ -279,7 +280,8 @@ public abstract class AbstractDispatcherLeaderProcess implements DispatcherLeade
                 ExecutionPlanWriter executionPlanWriter,
                 JobResultStore jobResultStore,
                 ApplicationStore applicationStore,
-                ApplicationResultStore applicationResultStore);
+                ApplicationResultStore applicationResultStore,
+                ArchivedApplicationStore archivedApplicationStore);
     }
 
     /** An accessor of the {@link DispatcherGateway}. */

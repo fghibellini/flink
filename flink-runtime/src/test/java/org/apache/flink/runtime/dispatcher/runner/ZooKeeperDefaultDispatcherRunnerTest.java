@@ -26,6 +26,7 @@ import org.apache.flink.runtime.application.SingleJobApplication;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.blob.BlobUtils;
 import org.apache.flink.runtime.blob.PermanentBlobKey;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.dispatcher.DispatcherGateway;
 import org.apache.flink.runtime.dispatcher.DispatcherId;
 import org.apache.flink.runtime.dispatcher.DispatcherOperationCaches;
@@ -179,7 +180,8 @@ class ZooKeeperDefaultDispatcherRunnerTest {
                             blobServer,
                             new TestingHeartbeatServices(),
                             UnregisteredMetricGroups::createUnregisteredJobManagerMetricGroup,
-                            new MemoryArchivedApplicationStore(),
+                            ArchivedApplicationStoreFactory.shared(
+                                    new MemoryArchivedApplicationStore()),
                             fatalErrorHandler,
                             VoidHistoryServerArchivist.INSTANCE,
                             null,

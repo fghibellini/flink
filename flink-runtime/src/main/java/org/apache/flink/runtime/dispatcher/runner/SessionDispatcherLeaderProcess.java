@@ -172,7 +172,8 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
                         executionPlanStore,
                         jobResultStore,
                         applicationStore,
-                        applicationResultStore);
+                        applicationResultStore,
+                        archivedApplicationStore);
 
         completeDispatcherSetup(dispatcherService);
     }
@@ -444,6 +445,7 @@ public class SessionDispatcherLeaderProcess extends AbstractDispatcherLeaderProc
         try {
             executionPlanStore.stop();
             applicationStore.stop();
+            archivedApplicationStore.close();
         } catch (Exception e) {
             ExceptionUtils.rethrow(e);
         }

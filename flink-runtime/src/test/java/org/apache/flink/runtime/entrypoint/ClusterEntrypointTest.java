@@ -27,6 +27,7 @@ import org.apache.flink.configuration.SchedulerExecutionMode;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
+import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreFactory;
 import org.apache.flink.runtime.dispatcher.MemoryArchivedApplicationStore;
 import org.apache.flink.runtime.dispatcher.PartialDispatcherServices;
 import org.apache.flink.runtime.dispatcher.runner.DispatcherRunner;
@@ -170,28 +171,32 @@ public class ClusterEntrypointTest extends TestLogger {
     }
 
     @Test
-    public void testArchivedApplicationStoreIsClosedBeforeHaServices() throws Exception {
+    public void testArchivedApplicationStoreFactoryIsClosedBeforeHaServices() throws Exception {
         final CompletableFuture<Void> haServicesCloseFuture = new CompletableFuture<>();
         final HighAvailabilityServices testingHaService =
                 new TestingHighAvailabilityServicesBuilder()
                         .setCloseFuture(haServicesCloseFuture)
                         .build();
-        final CompletableFuture<Boolean> haServicesClosedOnArchivedApplicationStoreClose =
+        final CompletableFuture<Boolean> haServicesClosedOnArchivedApplicationStoreFactoryClose =
                 new CompletableFuture<>();
-        final ArchivedApplicationStore archivedApplicationStore =
-                new MemoryArchivedApplicationStore() {
+        final ArchivedApplicationStoreFactory archivedApplicationStoreFactory =
+                new ArchivedApplicationStoreFactory() {
                     @Override
-                    public void close() throws IOException {
-                        haServicesClosedOnArchivedApplicationStoreClose.complete(
+                    public ArchivedApplicationStore createArchivedApplicationStore() {
+                        return new MemoryArchivedApplicationStore();
+                    }
+
+                    @Override
+                    public void close() {
+                        haServicesClosedOnArchivedApplicationStoreFactoryClose.complete(
                                 haServicesCloseFuture.isDone());
-                        super.close();
                     }
                 };
         final TestingEntryPoint testingEntryPoint =
                 new TestingEntryPoint.Builder()
                         .setConfiguration(flinkConfig)
                         .setHighAvailabilityServices(testingHaService)
-                        .setArchivedApplicationStore(archivedApplicationStore)
+                        .setArchivedApplicationStoreFactory(archivedApplicationStoreFactory)
                         .build();
 
         final CompletableFuture<ApplicationStatus> appStatusFuture =
@@ -200,7 +205,7 @@ public class ClusterEntrypointTest extends TestLogger {
         testingEntryPoint.closeAsync();
         appStatusFuture.get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
 
-        Assertions.assertThat(haServicesClosedOnArchivedApplicationStoreClose)
+        Assertions.assertThat(haServicesClosedOnArchivedApplicationStoreFactoryClose)
                 .isCompletedWithValue(false);
         Assertions.assertThat(haServicesCloseFuture).isDone();
     }
@@ -406,20 +411,20 @@ public class ClusterEntrypointTest extends TestLogger {
 
         private final DispatcherRunnerFactory dispatcherRunnerFactory;
 
-        private final ArchivedApplicationStore archivedApplicationStore;
+        private final ArchivedApplicationStoreFactory archivedApplicationStoreFactory;
 
         private TestingEntryPoint(
                 Configuration configuration,
                 HighAvailabilityServices haService,
                 ResourceManagerFactory<ResourceID> resourceManagerFactory,
                 DispatcherRunnerFactory dispatcherRunnerFactory,
-                ArchivedApplicationStore archivedApplicationStore) {
+                ArchivedApplicationStoreFactory archivedApplicationStoreFactory) {
             super(configuration);
             SignalHandler.register(LOG);
             this.haService = haService;
             this.resourceManagerFactory = resourceManagerFactory;
             this.dispatcherRunnerFactory = dispatcherRunnerFactory;
-            this.archivedApplicationStore = archivedApplicationStore;
+            this.archivedApplicationStoreFactory = archivedApplicationStoreFactory;
         }
 
         @Override
@@ -433,11 +438,11 @@ public class ClusterEntrypointTest extends TestLogger {
         }
 
         @Override
-        protected ArchivedApplicationStore createArchivedApplicationStore(
+        protected ArchivedApplicationStoreFactory createArchivedApplicationStoreFactory(
                 Configuration configuration,
                 HighAvailabilityServices haServices,
                 ScheduledExecutor scheduledExecutor) {
-            return archivedApplicationStore;
+            return archivedApplicationStoreFactory;
         }
 
         @Override
@@ -463,8 +468,8 @@ public class ClusterEntrypointTest extends TestLogger {
 
             private Configuration configuration = new Configuration();
 
-            private ArchivedApplicationStore archivedApplicationStore =
-                    new MemoryArchivedApplicationStore();
+            private ArchivedApplicationStoreFactory archivedApplicationStoreFactory =
+                    ArchivedApplicationStoreFactory.shared(new MemoryArchivedApplicationStore());
 
             public Builder setHighAvailabilityServices(HighAvailabilityServices haService) {
                 this.haService = haService;
@@ -488,9 +493,9 @@ public class ClusterEntrypointTest extends TestLogger {
                 return this;
             }
 
-            public Builder setArchivedApplicationStore(
-                    ArchivedApplicationStore archivedApplicationStore) {
-                this.archivedApplicationStore = archivedApplicationStore;
+            public Builder setArchivedApplicationStoreFactory(
+                    ArchivedApplicationStoreFactory archivedApplicationStoreFactory) {
+                this.archivedApplicationStoreFactory = archivedApplicationStoreFactory;
                 return this;
             }
 
@@ -500,7 +505,7 @@ public class ClusterEntrypointTest extends TestLogger {
                         haService,
                         resourceManagerFactory,
                         dispatcherRunnerFactory,
-                        archivedApplicationStore);
+                        archivedApplicationStoreFactory);
             }
         }
     }

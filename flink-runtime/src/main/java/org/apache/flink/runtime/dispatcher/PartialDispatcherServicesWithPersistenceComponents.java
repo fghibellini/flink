@@ -43,6 +43,7 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
     private final JobResultStore jobResultStore;
     private final ApplicationWriter applicationWriter;
     private final ApplicationResultStore applicationResultStore;
+    private final ArchivedApplicationStore archivedApplicationStore;
 
     private PartialDispatcherServicesWithPersistenceComponents(
             Configuration configuration,
@@ -51,7 +52,7 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
             BlobServer blobServer,
             HeartbeatServices heartbeatServices,
             JobManagerMetricGroupFactory jobManagerMetricGroupFactory,
-            ArchivedApplicationStore archivedApplicationStore,
+            ArchivedApplicationStoreFactory archivedApplicationStoreFactory,
             FatalErrorHandler fatalErrorHandler,
             HistoryServerArchivist historyServerArchivist,
             @Nullable String metricQueryServiceAddress,
@@ -61,7 +62,8 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
             ExecutionPlanWriter executionPlanWriter,
             JobResultStore jobResultStore,
             ApplicationWriter applicationWriter,
-            ApplicationResultStore applicationResultStore) {
+            ApplicationResultStore applicationResultStore,
+            ArchivedApplicationStore archivedApplicationStore) {
         super(
                 configuration,
                 highAvailabilityServices,
@@ -69,7 +71,7 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
                 blobServer,
                 heartbeatServices,
                 jobManagerMetricGroupFactory,
-                archivedApplicationStore,
+                archivedApplicationStoreFactory,
                 fatalErrorHandler,
                 historyServerArchivist,
                 metricQueryServiceAddress,
@@ -80,6 +82,7 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
         this.jobResultStore = jobResultStore;
         this.applicationWriter = applicationWriter;
         this.applicationResultStore = applicationResultStore;
+        this.archivedApplicationStore = archivedApplicationStore;
     }
 
     public ExecutionPlanWriter getExecutionPlanWriter() {
@@ -98,12 +101,17 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
         return applicationResultStore;
     }
 
+    public ArchivedApplicationStore getArchivedApplicationStore() {
+        return archivedApplicationStore;
+    }
+
     public static PartialDispatcherServicesWithPersistenceComponents from(
             PartialDispatcherServices partialDispatcherServices,
             ExecutionPlanWriter executionPlanWriter,
             JobResultStore jobResultStore,
             ApplicationWriter applicationWriter,
-            ApplicationResultStore applicationResultStore) {
+            ApplicationResultStore applicationResultStore,
+            ArchivedApplicationStore archivedApplicationStore) {
         return new PartialDispatcherServicesWithPersistenceComponents(
                 partialDispatcherServices.getConfiguration(),
                 partialDispatcherServices.getHighAvailabilityServices(),
@@ -111,7 +119,7 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
                 partialDispatcherServices.getBlobServer(),
                 partialDispatcherServices.getHeartbeatServices(),
                 partialDispatcherServices.getJobManagerMetricGroupFactory(),
-                partialDispatcherServices.getArchivedApplicationStore(),
+                partialDispatcherServices.getArchivedApplicationStoreFactory(),
                 partialDispatcherServices.getFatalErrorHandler(),
                 partialDispatcherServices.getHistoryServerArchivist(),
                 partialDispatcherServices.getMetricQueryServiceAddress(),
@@ -121,6 +129,7 @@ public class PartialDispatcherServicesWithPersistenceComponents extends PartialD
                 executionPlanWriter,
                 jobResultStore,
                 applicationWriter,
-                applicationResultStore);
+                applicationResultStore,
+                archivedApplicationStore);
     }
 }
