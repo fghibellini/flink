@@ -198,14 +198,13 @@ public class StateHandleArchivedApplicationStore<R extends ResourceVersion<R>>
     public void put(ArchivedApplication archivedApplication) throws IOException {
         final ApplicationID applicationId = archivedApplication.getApplicationId();
 
-        // the application is served from memory even if it cannot be persisted
         if (memoryStore.get(applicationId).isPresent()) {
             LOG.info(
                     "Archived application {} is already stored. Keeping the existing entry.",
                     applicationId);
-        } else {
-            memoryStore.put(archivedApplication);
+            return;
         }
+        memoryStore.put(archivedApplication);
 
         final String name = archivedApplicationStoreUtil.applicationIdToName(applicationId);
 
