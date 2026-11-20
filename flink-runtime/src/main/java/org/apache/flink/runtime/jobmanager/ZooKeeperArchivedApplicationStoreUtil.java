@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.dispatcher;
+package org.apache.flink.runtime.jobmanager;
 
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.runtime.util.ZooKeeperUtils;

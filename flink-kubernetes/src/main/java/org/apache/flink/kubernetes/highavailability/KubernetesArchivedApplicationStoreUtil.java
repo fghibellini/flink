@@ -20,7 +20,7 @@ package org.apache.flink.kubernetes.highavailability;
 
 import org.apache.flink.api.common.ApplicationID;
 import org.apache.flink.kubernetes.utils.Constants;
-import org.apache.flink.runtime.dispatcher.ArchivedApplicationStoreUtil;
+import org.apache.flink.runtime.jobmanager.ArchivedApplicationStoreUtil;
 
 import static org.apache.flink.kubernetes.utils.Constants.ARCHIVED_APPLICATION_STORE_KEY_PREFIX;
 

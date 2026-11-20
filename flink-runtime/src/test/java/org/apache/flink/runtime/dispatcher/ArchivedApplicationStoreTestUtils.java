@@ -35,6 +35,8 @@ import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.jobmanager.StateHandleArchivedApplicationStore;
+import org.apache.flink.runtime.jobmanager.ZooKeeperArchivedApplicationStoreUtil;
 import org.apache.flink.runtime.messages.webmonitor.ApplicationDetails;
 import org.apache.flink.runtime.messages.webmonitor.JobDetails;
 import org.apache.flink.runtime.metrics.MetricRegistry;
@@ -112,7 +114,7 @@ public class ArchivedApplicationStoreTestUtils {
      * @param number the given number
      * @return the result ArchivedApplication collection
      */
-    static Collection<ArchivedApplication> generateTerminalArchivedApplications(int number) {
+    public static Collection<ArchivedApplication> generateTerminalArchivedApplications(int number) {
         final Collection<ArchivedApplication> archivedApplications = new ArrayList<>(number);
 
         for (int i = 0; i < number; i++) {

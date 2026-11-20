@@ -79,7 +79,7 @@ public class MemoryArchivedApplicationStore implements ArchivedApplicationStore 
      *     expired or because the maximum capacity was exceeded. It is not notified about explicit
      *     removals, e.g. on {@link #close()}.
      */
-    MemoryArchivedApplicationStore(
+    public MemoryArchivedApplicationStore(
             Duration expirationTime,
             int maximumCapacity,
             @Nullable ScheduledExecutor scheduledExecutor,

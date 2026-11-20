@@ -37,8 +37,6 @@ import org.apache.flink.runtime.checkpoint.DefaultLastStateConnectionStateListen
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.ZooKeeperCheckpointStoreUtil;
 import org.apache.flink.runtime.dispatcher.ArchivedApplicationStore;
-import org.apache.flink.runtime.dispatcher.StateHandleArchivedApplicationStore;
-import org.apache.flink.runtime.dispatcher.ZooKeeperArchivedApplicationStoreUtil;
 import org.apache.flink.runtime.highavailability.HighAvailabilityServicesUtils;
 import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
 import org.apache.flink.runtime.jobmanager.ApplicationStore;
@@ -47,7 +45,9 @@ import org.apache.flink.runtime.jobmanager.DefaultApplicationStore;
 import org.apache.flink.runtime.jobmanager.DefaultExecutionPlanStore;
 import org.apache.flink.runtime.jobmanager.ExecutionPlanStore;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
+import org.apache.flink.runtime.jobmanager.StateHandleArchivedApplicationStore;
 import org.apache.flink.runtime.jobmanager.ZooKeeperApplicationStoreUtil;
+import org.apache.flink.runtime.jobmanager.ZooKeeperArchivedApplicationStoreUtil;
 import org.apache.flink.runtime.jobmanager.ZooKeeperExecutionPlanStoreUtil;
 import org.apache.flink.runtime.jobmanager.ZooKeeperExecutionPlanStoreWatcher;
 import org.apache.flink.runtime.leaderelection.LeaderInformation;
